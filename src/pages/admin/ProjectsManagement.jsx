@@ -1,44 +1,101 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, Filter, Edit, Trash2, Eye, X, Upload, Link, Github, Check, FileImage } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Plus, Search, Filter, Edit, Trash2, Eye, X, Check } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import AdminLayout from '../../components/admin/AdminLayout'
-
-const projects = [
-  { id: 1, title: 'School Management System', status: 'Published', date: 'Apr 12, 2025', category: 'Web Apps' },
-  { id: 2, title: 'Timetable Management System', status: 'Published', date: 'Apr 10, 2025', category: 'Web Apps' },
-  { id: 3, title: 'Portfolio Website', status: 'Published', date: 'Apr 5, 2025', category: 'Full Stack' },
-  { id: 4, title: 'Task Management App', status: 'Draft', date: 'Apr 2, 2025', category: 'Web Apps' },
-]
+import { api, formatDate, isOfflineError } from '../../api.js'
 
 const availableTechnologies = [
-  'React', 'Node.js', 'MySQL', 'PHP', 'Laravel', 'Dart', 'Flutter', 
+  'React', 'Node.js', 'MySQL', 'PHP', 'Laravel', 'Dart', 'Flutter',
   'JavaScript', 'Python', 'Tailwind CSS', 'Express', 'MongoDB', 'Firebase',
   'TypeScript', 'Next.js', 'Vue.js', 'Angular'
 ]
 
+const emptyForm = {
+  title: '',
+  description: '',
+  technologies: [],
+  liveDemoUrl: '',
+  githubUrl: '',
+  category: 'Web Apps',
+  status: 'Draft'
+}
+
 export default function ProjectsManagement() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [projects, setProjects] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    technologies: [],
-    liveDemoUrl: '',
-    githubUrl: '',
-    category: 'Web Apps',
-    status: 'Draft'
-  })
+  const [editingProject, setEditingProject] = useState(null)
+  const [formData, setFormData] = useState(emptyForm)
   const [selectedImage, setSelectedImage] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+  const [listError, setListError] = useState('')
   const [dragActive, setDragActive] = useState(false)
 
-  const filteredProjects = projects.filter(p => 
+  // Load real projects from the API
+  useEffect(() => {
+    let cancelled = false
+    api('/api/projects', { auth: true })
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) setProjects(rows)
+      })
+      .catch((err) => {
+        if (!cancelled) setListError(err.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // /admin/projects/add opens the create modal directly
+  useEffect(() => {
+    if (location.pathname.endsWith('/add')) openAddModal()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
+
+  const filteredProjects = projects.filter(p =>
     p.title.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  const openAddModal = () => {
+    setEditingProject(null)
+    setFormData(emptyForm)
+    setSelectedImage(null)
+    setImagePreview(null)
+    setErrors({})
+    setShowAddModal(true)
+  }
+
+  const openEditModal = (project) => {
+    setEditingProject(project)
+    setFormData({
+      title: project.title || '',
+      description: project.description || '',
+      technologies: project.technologies || [],
+      liveDemoUrl: project.liveDemoUrl || '',
+      githubUrl: project.githubUrl || '',
+      category: project.category || 'Web Apps',
+      status: project.status || 'Draft',
+    })
+    setSelectedImage(null)
+    setImagePreview(project.image || null)
+    setErrors({})
+    setShowAddModal(true)
+  }
+
+  const closeModal = () => {
+    setShowAddModal(false)
+    setEditingProject(null)
+    setFormData(emptyForm)
+    setSelectedImage(null)
+    setImagePreview(null)
+    setErrors({})
+    if (location.pathname.endsWith('/add')) navigate('/admin/projects', { replace: true })
+  }
 
   const handleImageChange = (e) => {
     const file = e.target.files[0]
@@ -47,16 +104,16 @@ export default function ProjectsManagement() {
 
   const processFile = (file) => {
     if (!file.type.startsWith('image/')) {
-      setErrors({...errors, image: 'Please select a valid image file'})
+      setErrors(prev => ({ ...prev, image: 'Please select a valid image file' }))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setErrors({...errors, image: 'Image size must be less than 5MB'})
+      setErrors(prev => ({ ...prev, image: 'Image size must be less than 5MB' }))
       return
     }
     setSelectedImage(file)
     setImagePreview(URL.createObjectURL(file))
-    setErrors({...errors, image: null})
+    setErrors(prev => ({ ...prev, image: null }))
   }
 
   const handleDrag = (e) => {
@@ -80,32 +137,15 @@ export default function ProjectsManagement() {
 
   const addTechnology = (tech) => {
     if (tech && !formData.technologies.includes(tech)) {
-      setFormData({...formData, technologies: [...formData.technologies, tech]})
+      setFormData(prev => ({ ...prev, technologies: [...prev.technologies, tech] }))
     }
   }
 
   const removeTechnology = (techToRemove) => {
-    setFormData({
-      ...formData, 
-      technologies: formData.technologies.filter(t => t !== techToRemove)
-    })
-  }
-
-  const validateForm = () => {
-    const newErrors = {}
-    if (!formData.title.trim()) newErrors.title = 'Project title is required'
-    if (!formData.description.trim()) newErrors.description = 'Description is required'
-    if (formData.technologies.length === 0) newErrors.technologies = 'Select at least one technology'
-    
-    if (formData.liveDemoUrl && !isValidUrl(formData.liveDemoUrl)) {
-      newErrors.liveDemoUrl = 'Please enter a valid URL'
-    }
-    if (formData.githubUrl && !isValidUrl(formData.githubUrl)) {
-      newErrors.githubUrl = 'Please enter a valid URL'
-    }
-    
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    setFormData(prev => ({
+      ...prev,
+      technologies: prev.technologies.filter(t => t !== techToRemove)
+    }))
   }
 
   const isValidUrl = (string) => {
@@ -117,25 +157,87 @@ export default function ProjectsManagement() {
     }
   }
 
+  const validateForm = () => {
+    const newErrors = {}
+    if (!formData.title.trim()) newErrors.title = 'Project title is required'
+    if (!formData.description.trim()) newErrors.description = 'Description is required'
+    if (formData.technologies.length === 0) newErrors.technologies = 'Select at least one technology'
+
+    if (formData.liveDemoUrl && !isValidUrl(formData.liveDemoUrl)) {
+      newErrors.liveDemoUrl = 'Please enter a valid URL'
+    }
+    if (formData.githubUrl && !isValidUrl(formData.githubUrl)) {
+      newErrors.githubUrl = 'Please enter a valid URL'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validateForm()) return
-    
+
     setLoading(true)
+    setErrors(prev => ({ ...prev, submit: null }))
+
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      alert('Project saved successfully!')
-      setShowAddModal(false)
-      setFormData({
-        title: '', description: '', technologies: [], liveDemoUrl: '', githubUrl: '', category: 'Web Apps', status: 'Draft'
-      })
-      setSelectedImage(null)
-      setImagePreview(null)
-      setErrors({})
+      const body = new FormData()
+      body.append('title', formData.title.trim())
+      body.append('description', formData.description.trim())
+      body.append('technologies', JSON.stringify(formData.technologies))
+      body.append('liveDemoUrl', formData.liveDemoUrl.trim())
+      body.append('githubUrl', formData.githubUrl.trim())
+      body.append('category', formData.category)
+      body.append('status', formData.status)
+      if (selectedImage) body.append('image', selectedImage)
+
+      if (editingProject) {
+        const updated = await api(`/api/projects/${editingProject.id}`, {
+          method: 'PUT',
+          auth: true,
+          body,
+        })
+        console.log('[E2E] PUT resolved', JSON.stringify(updated).slice(0, 80))
+        setProjects(prev => prev.map(p => (p.id === editingProject.id ? updated : p)))
+      } else {
+        const created = await api('/api/projects', { method: 'POST', auth: true, body })
+        console.log('[E2E] POST resolved')
+        setProjects(prev => [created, ...prev])
+      }
+      setListError('')
+      console.log('[E2E] before closeModal')
+      closeModal()
+      console.log('[E2E] after closeModal')
     } catch (error) {
-      setErrors({ submit: 'Failed to save project. Please try again.' })
+      console.log('[E2E] catch', error.message)
+      setErrors(prev => ({
+        ...prev,
+        submit: isOfflineError(error)
+          ? `${error.message} Start it with: npm run server`
+          : error.message,
+      }))
     } finally {
+      console.log('[E2E] finally, loading=false')
       setLoading(false)
+    }
+  }
+
+  const handleDelete = async (project) => {
+    if (!confirm(`Delete "${project.title}"? This cannot be undone.`)) return
+    try {
+      await api(`/api/projects/${project.id}`, { method: 'DELETE', auth: true })
+      setProjects(prev => prev.filter(p => p.id !== project.id))
+    } catch (error) {
+      alert(error.message)
+    }
+  }
+
+  const handleView = (project) => {
+    if (project.liveDemoUrl) {
+      window.open(project.liveDemoUrl, '_blank', 'noopener')
+    } else {
+      window.open('/#/projects', '_blank', 'noopener')
     }
   }
 
@@ -148,7 +250,7 @@ export default function ProjectsManagement() {
             <p className="text-sm text-slate-400">Manage your portfolio projects</p>
           </div>
           <motion.button
-            onClick={() => setShowAddModal(true)}
+            onClick={openAddModal}
             whileHover={{ scale: 1.05, boxShadow: '0 0 20px rgba(37, 99, 235, 0.5)' }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg font-medium text-sm"
@@ -157,6 +259,12 @@ export default function ProjectsManagement() {
             Add New Project
           </motion.button>
         </div>
+
+        {listError && (
+          <div className="text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
+            {listError}
+          </div>
+        )}
 
         <div className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-blue-500/20">
@@ -171,9 +279,14 @@ export default function ProjectsManagement() {
                   className="w-full pl-10 pr-4 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-sm"
                 />
               </div>
-              <button className="flex items-center gap-2 px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-slate-300 hover:text-white text-sm">
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                title="Clear the search filter"
+                className="flex items-center gap-2 px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-slate-300 hover:text-white text-sm"
+              >
                 <Filter className="w-4 h-4" />
-                Filter
+                Reset
               </button>
             </div>
           </div>
@@ -189,6 +302,13 @@ export default function ProjectsManagement() {
                 </tr>
               </thead>
               <tbody>
+                {filteredProjects.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-slate-400 text-sm">
+                      {projects.length === 0 ? 'No projects yet — add your first one.' : 'No project matches your search.'}
+                    </td>
+                  </tr>
+                )}
                 {filteredProjects.map((project, index) => (
                   <motion.tr
                     key={project.id}
@@ -211,16 +331,28 @@ export default function ProjectsManagement() {
                         {project.status}
                       </span>
                     </td>
-                    <td className="p-3 text-slate-400 text-sm">{project.date}</td>
+                    <td className="p-3 text-slate-400 text-sm">{formatDate(project.createdAt)}</td>
                     <td className="p-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 hover:bg-blue-500/10 rounded-lg text-slate-400 hover:text-white transition-colors">
+                        <button
+                          onClick={() => handleView(project)}
+                          title="View on the public site"
+                          className="p-1.5 hover:bg-blue-500/10 rounded-lg text-slate-400 hover:text-white transition-colors"
+                        >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button className="p-1.5 hover:bg-blue-500/10 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors">
+                        <button
+                          onClick={() => openEditModal(project)}
+                          title="Edit project"
+                          className="p-1.5 hover:bg-blue-500/10 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors"
+                        >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button className="p-1.5 hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-400 transition-colors">
+                        <button
+                          onClick={() => handleDelete(project)}
+                          title="Delete project"
+                          className="p-1.5 hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-400 transition-colors"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -240,7 +372,7 @@ export default function ProjectsManagement() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={() => setShowAddModal(false)}
+            onClick={closeModal}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -250,9 +382,11 @@ export default function ProjectsManagement() {
               className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/40 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
             >
               <div className="p-4 border-b border-blue-500/30 flex items-center justify-between sticky top-0 bg-[#08152A]/95 backdrop-blur-xl">
-                <h2 className="text-lg font-bold text-white">Add New Project</h2>
+                <h2 className="text-lg font-bold text-white">
+                  {editingProject ? 'Edit Project' : 'Add New Project'}
+                </h2>
                 <button
-                  onClick={() => setShowAddModal(false)}
+                  onClick={closeModal}
                   className="p-1.5 hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-400"
                 >
                   <X className="w-5 h-5" />
@@ -294,6 +428,9 @@ export default function ProjectsManagement() {
                       <option value="Draft">Draft</option>
                       <option value="Published">Published</option>
                     </select>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Drafts are hidden from the public Projects page.
+                    </p>
                   </div>
                 </div>
 
@@ -338,6 +475,42 @@ export default function ProjectsManagement() {
                   {errors.technologies && <p className="text-red-400 text-xs mt-1">{errors.technologies}</p>}
                 </div>
 
+                <div
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                    dragActive ? 'border-cyan-400 bg-cyan-400/10' : 'border-blue-500/30'
+                  }`}
+                >
+                  {imagePreview ? (
+                    <div className="relative inline-block">
+                      <img
+                        src={imagePreview}
+                        alt="Project preview"
+                        className="max-h-40 rounded-lg mx-auto border border-blue-500/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedImage(null); setImagePreview(editingProject?.image || null) }}
+                        className="absolute -top-2 -right-2 p-1 bg-red-500 rounded-full text-white"
+                        title="Remove selected image"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 text-sm">Drag & drop a screenshot here, or</p>
+                  )}
+                  <label className="inline-block mt-2 cursor-pointer text-cyan-400 text-sm hover:underline">
+                    {imagePreview ? 'Change image' : 'browse files'}
+                    <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-1">PNG/JPG up to 5MB</p>
+                  {errors.image && <p className="text-red-400 text-xs mt-1">{errors.image}</p>}
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium mb-1 text-white">Live Demo URL</label>
@@ -372,7 +545,7 @@ export default function ProjectsManagement() {
                 <div className="flex items-center gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowAddModal(false)}
+                    onClick={closeModal}
                     className="flex-1 px-4 py-2 bg-[#050B18] border border-blue-500/30 text-white rounded-lg hover:bg-blue-500/10 transition-colors text-sm"
                   >
                     Cancel
@@ -392,7 +565,7 @@ export default function ProjectsManagement() {
                     ) : (
                       <>
                         <Check className="w-4 h-4" />
-                        Save Project
+                        {editingProject ? 'Update Project' : 'Save Project'}
                       </>
                     )}
                   </motion.button>

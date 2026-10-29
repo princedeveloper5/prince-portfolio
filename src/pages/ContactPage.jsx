@@ -3,10 +3,13 @@ import { Mail, MapPin, Phone, Send, User } from 'lucide-react'
 import { FaGithub, FaLinkedinIn, FaTwitter } from 'react-icons/fa'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import { api, isOfflineError } from '../api.js'
 
-const EMAIL = 'mugishaprince@gmail.com'
-const PHONE = '+250 788 123 456'
-const LOCATION = 'Kigali, Rwanda'
+const DEFAULTS = {
+  email: 'mugishaprince@gmail.com',
+  phone: '+250 788 123 456',
+  location: 'Kigali, Rwanda',
+}
 
 const SOCIALS = [
   { name: 'GitHub', href: 'https://github.com/', Icon: FaGithub },
@@ -20,9 +23,30 @@ export default function ContactPage() {
   const [form, setForm] = useState(emptyForm)
   const [errors, setErrors] = useState({})
   const [status, setStatus] = useState('idle')
+  const [statusText, setStatusText] = useState('')
+  const [contact, setContact] = useState(DEFAULTS)
 
   useEffect(() => {
     window.scrollTo(0, 0)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    api('/api/about')
+      .then((data) => {
+        if (cancelled || !data) return
+        setContact({
+          email: data.email?.trim() || DEFAULTS.email,
+          phone: data.phone?.trim() || DEFAULTS.phone,
+          location: data.location?.trim() || DEFAULTS.location,
+        })
+      })
+      .catch((err) => {
+        if (!isOfflineError(err)) console.warn('Contact info:', err.message)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const update = (field) => (event) => {
@@ -42,22 +66,47 @@ export default function ContactPage() {
     return next
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     const next = validate()
     if (Object.keys(next).length) {
       setErrors(next)
       setStatus('error')
+      setStatusText('')
       return
     }
 
-    const subject = encodeURIComponent(`Portfolio message from ${form.name.trim()}`)
-    const body = encodeURIComponent(
-      `${form.message.trim()}\n\n— ${form.name.trim()}\n${form.email.trim()}`
-    )
-    window.location.href = `mailto:${EMAIL}?subject=${subject}&body=${body}`
-    setStatus('sent')
-    setForm(emptyForm)
+    setStatus('sending')
+    setStatusText('')
+
+    try {
+      await api('/api/messages', {
+        method: 'POST',
+        body: {
+          name: form.name.trim(),
+          email: form.email.trim(),
+          message: form.message.trim(),
+        },
+      })
+      setStatus('sent')
+      setStatusText('Thanks! Your message has been sent — I will get back to you soon.')
+      setForm(emptyForm)
+    } catch (err) {
+      if (isOfflineError(err) || err.status >= 500) {
+        // Backend unreachable → fall back to opening the mail app.
+        const subject = encodeURIComponent(`Portfolio message from ${form.name.trim()}`)
+        const body = encodeURIComponent(
+          `${form.message.trim()}\n\n— ${form.name.trim()}\n${form.email.trim()}`,
+        )
+        window.location.href = `mailto:${contact.email}?subject=${subject}&body=${body}`
+        setStatus('sent')
+        setStatusText('Opening your email app so you can send the message.')
+        setForm(emptyForm)
+      } else {
+        setStatus('error')
+        setStatusText(err.message || 'Could not send your message. Please try again.')
+      }
+    }
   }
 
   return (
@@ -74,9 +123,9 @@ export default function ContactPage() {
               </p>
 
               <div className="space-y-4 mb-10">
-                <ContactRow icon={Mail} label="Email" value={EMAIL} href={`mailto:${EMAIL}`} />
-                <ContactRow icon={Phone} label="Phone" value={PHONE} href={`tel:${PHONE.replace(/\s/g, '')}`} />
-                <ContactRow icon={MapPin} label="Location" value={LOCATION} />
+                <ContactRow icon={Mail} label="Email" value={contact.email} href={`mailto:${contact.email}`} />
+                <ContactRow icon={Phone} label="Phone" value={contact.phone} href={`tel:${contact.phone.replace(/\s/g, '')}`} />
+                <ContactRow icon={MapPin} label="Location" value={contact.location} />
               </div>
 
               <div>
@@ -148,15 +197,29 @@ export default function ContactPage() {
                 </div>
               </div>
 
-              {status === 'sent' && (
+              {status === 'sent' && statusText && (
                 <p className="mt-4 text-sm text-electric-400" role="status">
-                  Opening your email app so you can send the message.
+                  {statusText}
+                </p>
+              )}
+              {status === 'error' && statusText && (
+                <p className="mt-4 text-sm text-red-400" role="alert">
+                  {statusText}
                 </p>
               )}
 
-              <button type="submit" className="btn-primary w-full justify-center mt-6">
-                Send Message
-                <Send className="w-4 h-4" />
+              <button type="submit" disabled={status === 'sending'} className="btn-primary w-full justify-center mt-6 disabled:opacity-60">
+                {status === 'sending' ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-navy-900/30 border-t-navy-900 rounded-full animate-spin inline-block" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    Send Message
+                    <Send className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
           </div>

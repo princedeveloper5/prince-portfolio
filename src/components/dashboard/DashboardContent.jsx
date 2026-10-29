@@ -3,6 +3,7 @@ import { Folder, Code, MessageSquare, Users, Plus, Search, Filter, ArrowUp } fro
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { api, formatDate, timeAgo } from '../../api.js'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -30,19 +31,27 @@ function Counter({ value, duration = 2 }) {
   const [count, setCount] = useState(0)
   const numericValue = typeof value === 'string' ? parseFloat(value.replace(/[^\d.]/g, '')) : value
   const suffix = typeof value === 'string' && value.includes('K') ? 'K' : ''
-  
+
   useEffect(() => {
+    const end = Number.isFinite(numericValue) ? Math.round(numericValue) : 0
+    if (end <= 0) {
+      setCount(0)
+      return
+    }
     let start = 0
-    const end = numericValue
-    const incrementTime = (duration * 1000) / (end || 1)
+    const stepMs = Math.max(20, (duration * 1000) / end)
     const timer = setInterval(() => {
       start += 1
-      setCount(start)
-      if (start === end) clearInterval(timer)
-    }, incrementTime)
+      if (start >= end) {
+        setCount(end)
+        clearInterval(timer)
+      } else {
+        setCount(start)
+      }
+    }, stepMs)
     return () => clearInterval(timer)
   }, [numericValue, duration])
-  
+
   return <span>{count}{suffix}</span>
 }
 
@@ -61,23 +70,60 @@ const pieData = [
   { name: 'Mobile Apps', value: 1, color: '#8B5CF6' },
 ]
 
-const projects = [
-  { title: 'School Management System', status: 'Published', date: 'Apr 12, 2025' },
-  { title: 'Timetable Management System', status: 'Published', date: 'Apr 10, 2025' },
-  { title: 'Portfolio Website', status: 'Published', date: 'Apr 5, 2025' },
-  { title: 'Task Management App', status: 'Draft', date: 'Apr 2, 2025' },
-]
-
-const activities = [
-  { action: 'Project published', item: 'Portfolio Website', time: '2 hours ago', color: '#22C55E' },
-  { action: 'New message received', item: 'Contact form', time: '4 hours ago', color: '#38BDF8' },
-  { action: 'Skill updated', item: 'React.js', time: '1 day ago', color: '#8B5CF6' },
-  { action: 'Portfolio viewed', item: 'Homepage', time: '2 days ago', color: '#2563EB' },
+const DEFAULT_ACTIVITIES = [
+  { action: 'Portfolio ready', item: 'Add your first project from the Projects page', time: null, color: '#22C55E' },
 ]
 
 export default function DashboardContent() {
   const navigate = useNavigate()
-  
+
+  const [stats, setStats] = useState(null)
+  const [recentProjects, setRecentProjects] = useState([])
+  const [activities, setActivities] = useState(DEFAULT_ACTIVITIES)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+
+    api('/api/stats', { auth: true })
+      .then((data) => { if (!cancelled && data) setStats(data) })
+      .catch((err) => { if (!cancelled) setLoadError(err.message) })
+
+    api('/api/projects', { auth: true })
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) {
+          setRecentProjects(rows.slice(0, 5).map((p) => ({
+            title: p.title,
+            status: p.status || 'Draft',
+            date: formatDate(p.createdAt),
+          })))
+        }
+      })
+      .catch(() => {})
+
+    api('/api/activities', { auth: true })
+      .then((rows) => { if (!cancelled && Array.isArray(rows) && rows.length) setActivities(rows) })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const cards = [
+    { icon: Folder, label: 'Total Projects', value: stats ? stats.totalProjects : 0, color: '#2563EB' },
+    { icon: Code, label: 'Total Skills', value: stats ? stats.totalSkills : 0, color: '#38BDF8' },
+    { icon: MessageSquare, label: 'Total Messages', value: stats ? stats.totalMessages : 0, color: '#8B5CF6' },
+    { icon: Users, label: 'Total Visitors', value: stats ? stats.totalVisits : 0, color: '#22C55E' },
+  ]
+
+  const pieData = stats && stats.categories && stats.categories.length
+    ? stats.categories.map((c, i) => ({
+        ...c,
+        color: ['#2563EB', '#38BDF8', '#8B5CF6', '#22C55E', '#F59E0B'][i % 5],
+      }))
+    : [{ name: 'No published projects', value: 1, color: '#1E293B' }]
+
   return (
     <motion.div
       variants={containerVariants}
@@ -86,12 +132,12 @@ export default function DashboardContent() {
       className="p-6 space-y-6"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { icon: Folder, label: 'Total Projects', value: 6, color: '#2563EB' },
-          { icon: Code, label: 'Total Skills', value: 8, color: '#38BDF8' },
-          { icon: MessageSquare, label: 'Total Messages', value: 12, color: '#8B5CF6' },
-          { icon: Users, label: 'Total Visitors', value: '1.2K', color: '#22C55E' },
-        ].map((card, index) => (
+        {loadError && (
+          <div className="md:col-span-2 lg:col-span-4 text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
+            {loadError}
+          </div>
+        )}
+        {cards.map((card, index) => (
           <motion.div
             key={index}
             variants={itemVariants}
@@ -161,7 +207,14 @@ export default function DashboardContent() {
                 </tr>
               </thead>
               <tbody>
-                {projects.map((project, index) => (
+                {recentProjects.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="p-4 text-center text-slate-400 text-sm">
+                      No projects yet — add your first one.
+                    </td>
+                  </tr>
+                )}
+                {recentProjects.map((project, index) => (
                   <motion.tr
                     key={index}
                     initial={{ opacity: 0, x: -20 }}
@@ -208,7 +261,7 @@ export default function DashboardContent() {
                 <div className="flex-1">
                   <p className="text-white text-sm">{activity.action}</p>
                   <p className="text-cyan-400 text-xs">{activity.item}</p>
-                  <p className="text-slate-500 text-xs mt-1">{activity.time}</p>
+                  <p className="text-slate-500 text-xs mt-1">{timeAgo(activity.time)}</p>
                 </div>
               </motion.div>
             ))}
@@ -280,9 +333,9 @@ export default function DashboardContent() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: 'Add Project', icon: Plus, action: () => navigate('/admin/projects/add') },
-            { label: 'Add Skill', icon: Code, action: () => {} },
-            { label: 'Upload CV', icon: Folder, action: () => {} },
-            { label: 'Edit Profile', icon: Users, action: () => {} },
+            { label: 'Add Skill', icon: Code, action: () => navigate('/admin/skills') },
+            { label: 'Upload CV', icon: Folder, action: () => navigate('/admin/about') },
+            { label: 'Edit Profile', icon: Users, action: () => navigate('/admin/home') },
           ].map((action, index) => (
             <motion.button
               key={index}

@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { api, getToken, setToken } from './api.js'
 
 const AuthContext = createContext(null)
 
-const ADMIN_CREDENTIALS = {
+// Offline demo fallback — only used when the API server is unreachable.
+// Real logins go through POST /api/login and are checked in the database.
+const OFFLINE_CREDENTIALS = {
   email: 'admin@mugishaprince.com',
-  // This is just for demo - in production this would come from backend
   password: 'Admin123!',
 }
 
@@ -14,38 +16,70 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const storedUser = localStorage.getItem('admin_user')
-    if (storedUser) {
+    if (storedUser && getToken()) {
       try {
         setUser(JSON.parse(storedUser))
       } catch {
         localStorage.removeItem('admin_user')
+        setToken('')
       }
+    } else if (!storedUser) {
+      setToken('')
     }
     setLoading(false)
   }, [])
 
-  const login = async (email, password) => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 800))
-    
-    if (email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password) {
-      const userData = { email, role: 'admin', name: 'Mugisha Prince' }
-      setUser(userData)
-      localStorage.setItem('admin_user', JSON.stringify(userData))
-      return { success: true }
+  // A401 from the API means the stored session is no longer valid.
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null)
+      setToken('')
+      localStorage.removeItem('admin_user')
     }
-    
-    throw new Error('Invalid email or password')
+    window.addEventListener('auth-expired', onExpired)
+    return () => window.removeEventListener('auth-expired', onExpired)
+  }, [])
+
+  const persistSession = (token, userData) => {
+    setToken(token)
+    localStorage.setItem('admin_user', JSON.stringify(userData))
+    setUser(userData)
+  }
+
+  const login = async (email, password) => {
+    try {
+      const data = await api('/api/login', {
+        method: 'POST',
+        body: { email, password },
+      })
+      persistSession(data.token, data.user)
+      return { success: true }
+    } catch (error) {
+      // Server down → allow the demo account so the panel isn't locked out.
+      if (
+        error.offline &&
+        email === OFFLINE_CREDENTIALS.email &&
+        password === OFFLINE_CREDENTIALS.password
+      ) {
+        persistSession('offline-session', {
+          email,
+          role: 'admin',
+          name: 'Mugisha Prince',
+        })
+        return { success: true, offline: true }
+      }
+      throw error
+    }
   }
 
   const logout = () => {
     setUser(null)
+    setToken('')
     localStorage.removeItem('admin_user')
   }
 
-  const forgotPassword = async (email) => {
-    await new Promise(resolve => setTimeout(resolve, 600))
-    // Don't reveal if email exists
+  const forgotPassword = async () => {
+    // Don't reveal whether the email exists.
     return { success: true }
   }
 

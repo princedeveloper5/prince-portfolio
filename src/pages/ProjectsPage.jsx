@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import { api, isOfflineError, formatDate } from '../api.js'
 
 const FILTERS = ['All', 'Web Apps', 'Mobile Apps', 'Full Stack']
 
-const PROJECTS = [
+const ACCENTS = ['#38bdf8', '#0ea5e9', '#0284c7', '#38bdf8']
+
+const DEFAULT_PROJECTS = [
   {
     id: 'school-management',
     title: 'School Management System',
@@ -50,6 +53,64 @@ const PROJECTS = [
     thumb: 'tasks',
   },
 ]
+
+/**
+ * Map one API project onto the card shape used above. Keeps the static
+ * list as a fallback when the backend is offline or empty.
+ */
+function fromApi(project, index) {
+  const title = String(project.title || '')
+  const lower = title.toLowerCase()
+  const thumb = lower.includes('timetable') || lower.includes('schedule')
+    ? 'schedule'
+    : lower.includes('portfolio') || lower.includes('profile')
+      ? 'profile'
+      : lower.includes('task')
+        ? 'tasks'
+        : 'rows'
+
+  return {
+    id: project.id,
+    title,
+    description: project.description || '',
+    category: project.category || 'Web Apps',
+    technologies: Array.isArray(project.technologies) ? project.technologies : [],
+    liveDemo: project.liveDemoUrl || '#',
+    github: project.githubUrl || '#',
+    accent: ACCENTS[index % ACCENTS.length],
+    thumb,
+    image: project.image || '',
+    date: formatDate(project.createdAt),
+    status: project.status || 'Published',
+  }
+}
+
+/**
+ * Real uploaded screenshot when the project has one, otherwise the
+ * hand-drawn placeholder. Falls back to the drawing if the file 404s.
+ */
+function ProjectVisual({ project }) {
+  const [imageFailed, setImageFailed] = useState(false)
+
+  if (project.image && !imageFailed) {
+    return (
+      <img
+        src={project.image}
+        alt={`${project.title} preview`}
+        loading="lazy"
+        className="w-full h-auto block"
+        onError={() => setImageFailed(true)}
+      />
+    )
+  }
+  return (
+    <ProjectThumb
+      accent={project.accent}
+      variant={project.thumb}
+      label={`${project.title} preview`}
+    />
+  )
+}
 
 function ExternalLinkIcon() {
   return (
@@ -159,10 +220,53 @@ function ProjectThumb({ accent, variant, label }) {
   )
 }
 
+/**
+ * Real anchor when a URL exists; a visibly disabled chip when it doesn't,
+ * so we never show a button that leads nowhere.
+ */
+function ProjectLink({ href, className, children }) {
+  if (href && href !== '#') {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={className}>
+        {children}
+      </a>
+    )
+  }
+  return (
+    <span
+      className={`${className} opacity-50 cursor-not-allowed pointer-events-none`}
+      title="Link not added yet — set it from the admin panel"
+      aria-disabled="true"
+    >
+      {children}
+    </span>
+  )
+}
+
 export default function ProjectsPage() {
   const [activeFilter, setActiveFilter] = useState('All')
+  const [allProjects, setAllProjects] = useState(DEFAULT_PROJECTS)
 
-  const projects = PROJECTS.filter(
+  useEffect(() => {
+    let cancelled = false
+    api('/api/projects')
+      .then((rows) => {
+        if (cancelled || !Array.isArray(rows)) return
+        const published = rows.filter((p) => (p.status || 'Published') === 'Published')
+        if (published.length) {
+          setAllProjects(published.map(fromApi))
+        }
+      })
+      .catch((err) => {
+        // Server offline → keep showing the built-in projects.
+        if (!isOfflineError(err)) console.warn('Projects:', err.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const projects = allProjects.filter(
     (project) => activeFilter === 'All' || project.category === activeFilter,
   )
 
@@ -212,11 +316,7 @@ export default function ProjectsPage() {
                 >
                   <div className="p-3">
                     <div className="rounded-lg border border-navy-600 overflow-hidden bg-white">
-                      <ProjectThumb
-                        accent={project.accent}
-                        variant={project.thumb}
-                        label={`${project.title} preview`}
-                      />
+                      <ProjectVisual project={project} />
                     </div>
                   </div>
 
@@ -238,14 +338,14 @@ export default function ProjectsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      <a href={project.liveDemo} target="_blank" rel="noreferrer" className="btn-primary text-sm">
+                      <ProjectLink href={project.liveDemo} className="btn-primary text-sm">
                         <ExternalLinkIcon />
                         Live Demo
-                      </a>
-                      <a href={project.github} target="_blank" rel="noreferrer" className="btn-secondary text-sm">
+                      </ProjectLink>
+                      <ProjectLink href={project.github} className="btn-secondary text-sm">
                         <GithubIcon />
                         GitHub
-                      </a>
+                      </ProjectLink>
                     </div>
                   </div>
                 </article>

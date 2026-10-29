@@ -1,8 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { api, isOfflineError } from '../api.js'
+
+const DEFAULTS = {
+  greeting: "Hello, I'm",
+  name: 'Mugisha Prince',
+  title: 'Software Developer',
+  description:
+    'I build modern web applications and solve real problems with clean, efficient code. Passionate about learning, creating and growing in the tech industry.',
+  profileImage: '/mugisha-prince.png',
+}
 
 export default function Hero() {
+  const [content, setContent] = useState(DEFAULTS)
   const [photoOk, setPhotoOk] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    api('/api/home')
+      .then((data) => {
+        if (cancelled || !data) return
+        setContent({
+          greeting: data.greeting?.trim() || DEFAULTS.greeting,
+          name: data.name?.trim() || DEFAULTS.name,
+          title: data.title?.trim() || DEFAULTS.title,
+          description: data.description?.trim() || DEFAULTS.description,
+          profileImage: data.profileImage || DEFAULTS.profileImage,
+        })
+        setPhotoOk(true)
+      })
+      .catch((err) => {
+        // Server offline (or empty) → keep the built-in hero text.
+        if (!isOfflineError(err)) console.warn('Hero content:', err.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <section className="pt-32 pb-8 px-4 sm:px-6 lg:px-8">
@@ -10,17 +44,14 @@ export default function Hero() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
             <h1 className="font-bold leading-tight">
-              <span className="block text-3xl md:text-4xl text-white">Hello, I'm</span>
-              <span className="block text-4xl md:text-6xl text-electric-400">Mugisha Prince</span>
+              <span className="block text-3xl md:text-4xl text-white">{content.greeting}</span>
+              <span className="block text-4xl md:text-6xl text-electric-400">{content.name}</span>
               <span className="block text-2xl md:text-3xl text-white font-semibold mt-2">
-                Software Developer
+                {content.title}
               </span>
             </h1>
 
-            <p className="mt-6 text-gray-400 text-lg leading-relaxed max-w-xl">
-              I build modern web applications and solve real problems with clean, efficient code.
-              Passionate about learning, creating and growing in the tech industry.
-            </p>
+            <p className="mt-6 text-gray-400 text-lg leading-relaxed max-w-xl">{content.description}</p>
 
             <div className="flex flex-wrap gap-4 mt-8">
               <Link to="/projects" className="btn-primary">
@@ -38,8 +69,8 @@ export default function Hero() {
               <div className="aspect-[4/5] relative">
                 {photoOk ? (
                   <img
-                    src="/mugisha-prince.png"
-                    alt="Mugisha Prince"
+                    src={content.profileImage || DEFAULTS.profileImage}
+                    alt={content.name || 'Mugisha Prince'}
                     className="absolute inset-0 w-full h-full object-cover object-top"
                     onError={() => setPhotoOk(false)}
                   />

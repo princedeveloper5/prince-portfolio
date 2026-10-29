@@ -1,22 +1,33 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Search, Edit, Trash2, Code, X, Check } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
+import { api, isOfflineError } from '../../api.js'
 
-const initialSkills = [
-  { id: 1, name: 'React', category: 'Frontend', level: 90 },
-  { id: 2, name: 'JavaScript', category: 'Frontend', level: 95 },
-  { id: 3, name: 'Node.js', category: 'Backend', level: 85 },
-  { id: 4, name: 'MySQL', category: 'Database', level: 80 },
-]
+const CATEGORIES = ['Frontend', 'Backend', 'Database', 'Tools']
 
 export default function SkillsManagement() {
-  const [skills, setSkills] = useState(initialSkills)
+  const [skills, setSkills] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingSkill, setEditingSkill] = useState(null)
   const [formData, setFormData] = useState({ name: '', category: 'Frontend', level: 50 })
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    api('/api/skills', { auth: true })
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) setSkills(rows)
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const filteredSkills = skills.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -34,27 +45,44 @@ export default function SkillsManagement() {
     setShowModal(true)
   }
 
-  const handleDelete = (id) => {
-    if (confirm('Are you sure you want to delete this skill?')) {
-      setSkills(skills.filter(s => s.id !== id))
+  const handleDelete = async (id) => {
+    if (!confirm('Are you sure you want to delete this skill?')) return
+    try {
+      await api(`/api/skills/${id}`, { method: 'DELETE', auth: true })
+      setSkills((prev) => prev.filter((s) => s.id !== id))
+    } catch (err) {
+      alert(err.message)
     }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!formData.name.trim()) return
-    
+
     setLoading(true)
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    if (editingSkill) {
-      setSkills(skills.map(s => s.id === editingSkill.id ? {...s, ...formData} : s))
-    } else {
-      setSkills([...skills, { id: Date.now(), ...formData }])
+    setLoadError('')
+    try {
+      if (editingSkill) {
+        const updated = await api(`/api/skills/${editingSkill.id}`, {
+          method: 'PUT',
+          auth: true,
+          body: formData,
+        })
+        setSkills((prev) => prev.map((s) => (s.id === editingSkill.id ? updated : s)))
+      } else {
+        const created = await api('/api/skills', {
+          method: 'POST',
+          auth: true,
+          body: formData,
+        })
+        setSkills((prev) => [...prev, created])
+      }
+      setShowModal(false)
+    } catch (err) {
+      setLoadError(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message)
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
-    setShowModal(false)
   }
 
   return (
@@ -76,6 +104,12 @@ export default function SkillsManagement() {
           </motion.button>
         </div>
 
+        {loadError && (
+          <div className="text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
+            {loadError}
+          </div>
+        )}
+
         <div className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-blue-500/20">
             <div className="relative flex-1 max-w-sm">
@@ -90,6 +124,11 @@ export default function SkillsManagement() {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+            {filteredSkills.length === 0 && (
+              <p className="text-slate-400 text-sm col-span-full text-center py-8">
+                {skills.length === 0 ? 'No skills yet — add your first one.' : 'No skill matches your search.'}
+              </p>
+            )}
             {filteredSkills.map((skill, index) => (
               <motion.div
                 key={skill.id}
@@ -166,10 +205,12 @@ export default function SkillsManagement() {
                     onChange={(e) => setFormData({...formData, category: e.target.value})}
                     className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-400 text-sm"
                   >
-                    <option value="Frontend">Frontend</option>
-                    <option value="Backend">Backend</option>
-                    <option value="Database">Database</option>
-                    <option value="Tools">Tools</option>
+                    {CATEGORIES.includes(formData.category) || !formData.category ? null : (
+                      <option value={formData.category}>{formData.category}</option>
+                    )}
+                    {CATEGORIES.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

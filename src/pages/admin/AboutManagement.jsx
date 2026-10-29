@@ -1,18 +1,68 @@
 import { motion } from 'framer-motion'
 import { Mail, Phone, MapPin, Edit, Save, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
+import { api, isOfflineError } from '../../api.js'
+
+const DEFAULTS = {
+  name: 'Mugisha Prince',
+  title: 'Software Developer',
+  description: 'Passionate software developer with expertise in building modern web applications and solving real-world problems through technology.',
+  email: 'mugishaprince@gmail.com',
+  phone: '+250 xxx xxx xxx',
+  location: 'Rwanda'
+}
 
 export default function AboutManagement() {
   const [editing, setEditing] = useState(false)
-  const [aboutData, setAboutData] = useState({
-    name: 'Mugisha Prince',
-    title: 'Software Developer',
-    description: 'Passionate software developer with expertise in building modern web applications and solving real-world problems through technology.',
-    email: 'mugisha@example.com',
-    phone: '+250 xxx xxx xxx',
-    location: 'Rwanda'
-  })
+  const [aboutData, setAboutData] = useState(DEFAULTS)
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+
+  const load = () =>
+    api('/api/about', { auth: true })
+      .then((data) => {
+        if (!data) return
+        setAboutData({
+          name: data.name || DEFAULTS.name,
+          title: data.title || DEFAULTS.title,
+          description: data.description || DEFAULTS.description,
+          email: data.email || DEFAULTS.email,
+          phone: data.phone || DEFAULTS.phone,
+          location: data.location || DEFAULTS.location,
+        })
+      })
+      .catch((err) => setStatus(`⚠ ${err.message}`))
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleCancel = async () => {
+    setEditing(false)
+    setStatus('Changes discarded.')
+    await load()
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const updated = await api('/api/about', { method: 'PUT', auth: true, body: aboutData })
+      if (updated) setAboutData(prev => ({ ...prev, ...updated }))
+      setEditing(false)
+      setStatus('✓ Saved — the public About page now shows this.')
+    } catch (err) {
+      setStatus(
+        isOfflineError(err)
+          ? `${err.message} Start it with: npm run server`
+          : `✗ ${err.message}`,
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <AdminLayout currentPage="About">
@@ -23,7 +73,7 @@ export default function AboutManagement() {
             <p className="text-slate-400">Manage your about information</p>
           </div>
           <motion.button
-            onClick={() => setEditing(!editing)}
+            onClick={() => (editing ? handleCancel() : setEditing(true))}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg"
@@ -31,6 +81,21 @@ export default function AboutManagement() {
             {editing ? <><X className="w-4 h-4" /> Cancel</> : <><Edit className="w-4 h-4" /> Edit</>}
           </motion.button>
         </div>
+
+        {status && (
+          <div
+            className={`text-sm rounded-lg px-3 py-2 border ${
+              status.startsWith('✓')
+                ? 'text-green-400 bg-green-500/10 border-green-500/30'
+                : status.startsWith('✗') || status.startsWith('⚠')
+                  ? 'text-amber-300 bg-amber-400/10 border-amber-400/30'
+                  : 'text-slate-300 bg-blue-500/10 border-blue-500/30'
+            }`}
+            role="status"
+          >
+            {status}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <motion.div
@@ -78,9 +143,13 @@ export default function AboutManagement() {
                 )}
               </div>
               {editing && (
-                <button className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white disabled:opacity-60"
+                >
                   <Save className="w-4 h-4" />
-                  Save Changes
+                  {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               )}
             </div>

@@ -1,29 +1,101 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import { Edit, Save, X, Upload, Image as ImageIcon } from 'lucide-react'
-import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { Edit, Save, X, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
+import { api, isOfflineError } from '../../api.js'
+
+const DEFAULTS = {
+  greeting: "Hello, I'm",
+  name: 'Mugisha Prince',
+  title: 'Software Developer',
+  description: 'I build modern web applications and solve real problems with clean, efficient code. Passionate about learning, creating and growing in the tech industry.',
+  profileImage: '/mugisha-prince.png',
+}
 
 export default function HomePageEditor() {
   const [editing, setEditing] = useState(false)
-  const [heroData, setHeroData] = useState({
-    greeting: "Hi, I'm",
-    name: "Mugisha Prince",
-    title: "Software Developer",
-    description: "I build modern web applications and solve real-world problems through technology.",
-    profileImage: "/logo.png"
-  })
-  const [imagePreview, setImagePreview] = useState(heroData.profileImage)
+  const [heroData, setHeroData] = useState(DEFAULTS)
+  const [imagePreview, setImagePreview] = useState(DEFAULTS.profileImage)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    api('/api/home', { auth: true })
+      .then((data) => {
+        if (cancelled || !data) return
+        const next = {
+          greeting: data.greeting || DEFAULTS.greeting,
+          name: data.name || DEFAULTS.name,
+          title: data.title || DEFAULTS.title,
+          description: data.description || DEFAULTS.description,
+          profileImage: data.profileImage || DEFAULTS.profileImage,
+        }
+        setHeroData(next)
+        setImagePreview(next.profileImage)
+      })
+      .catch((err) => setStatus(`⚠ ${err.message}`))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleImageChange = (e) => {
     const file = e.target.files[0]
-    if (file && file.type.startsWith('image/')) {
-      setImagePreview(URL.createObjectURL(file))
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setStatus('✗ Please select a valid image file')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setStatus('✗ Image size must be less than 5MB')
+      return
+    }
+    setSelectedFile(file)
+    setImagePreview(URL.createObjectURL(file))
+    setStatus('')
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const body = new FormData()
+      body.append('greeting', heroData.greeting)
+      body.append('name', heroData.name)
+      body.append('title', heroData.title)
+      body.append('description', heroData.description)
+      if (selectedFile) {
+        body.append('image', selectedFile)
+      } else {
+        body.append('profileImage', heroData.profileImage)
+      }
+
+      const updated = await api('/api/home', { method: 'PUT', auth: true, body })
+      if (updated) {
+        setHeroData(prev => ({ ...prev, ...updated, profileImage: updated.profileImage || prev.profileImage }))
+        setImagePreview(updated.profileImage || imagePreview)
+      }
+      setSelectedFile(null)
+      setEditing(false)
+      setStatus('✓ Saved — reload the homepage to see it.')
+    } catch (err) {
+      setStatus(
+        isOfflineError(err)
+          ? `${err.message} Start it with: npm run server`
+          : `✗ ${err.message}`,
+      )
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleSave = () => {
+  const handleCancel = () => {
     setEditing(false)
-    alert('Home page updated successfully!')
+    setSelectedFile(null)
+    setImagePreview(heroData.profileImage)
+    setStatus('Changes discarded.')
   }
 
   return (
@@ -38,11 +110,27 @@ export default function HomePageEditor() {
             onClick={editing ? handleSave : () => setEditing(true)}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg font-medium text-sm"
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg font-medium text-sm disabled:opacity-60"
           >
-            {editing ? <><Save className="w-4 h-4" /> Save Changes</> : <><Edit className="w-4 h-4" /> Edit Page</>}
+            {editing ? <><Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save Changes'}</> : <><Edit className="w-4 h-4" /> Edit Page</>}
           </motion.button>
         </div>
+
+        {status && (
+          <div
+            className={`text-sm rounded-lg px-3 py-2 border ${
+              status.startsWith('✓')
+                ? 'text-green-400 bg-green-500/10 border-green-500/30'
+                : status.startsWith('✗') || status.startsWith('⚠')
+                  ? 'text-amber-300 bg-amber-400/10 border-amber-400/30'
+                  : 'text-slate-300 bg-blue-500/10 border-blue-500/30'
+            }`}
+            role="status"
+          >
+            {status}
+          </div>
+        )}
 
         <div className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-blue-500/20">
@@ -108,6 +196,7 @@ export default function HomePageEditor() {
                     src={imagePreview}
                     alt="Profile"
                     className="w-full h-48 object-cover rounded-lg border border-blue-500/30"
+                    onError={(e) => { e.currentTarget.src = DEFAULTS.profileImage }}
                   />
                   {editing && (
                     <label className="absolute bottom-2 right-2 cursor-pointer">
@@ -118,15 +207,24 @@ export default function HomePageEditor() {
                       <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                     </label>
                   )}
+                  {selectedFile && (
+                    <p className="text-xs text-cyan-400 mt-2">
+                      New image selected: {selectedFile.name} — click Save to upload.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
             {editing && (
               <div className="flex gap-2">
-                <button onClick={handleSave} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
-                  <Save className="w-4 h-4" /> Save
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
                 </button>
-                <button onClick={() => setEditing(false)} className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
+                <button onClick={handleCancel} className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
                   <X className="w-4 h-4" /> Cancel
                 </button>
               </div>

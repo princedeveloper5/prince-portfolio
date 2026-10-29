@@ -7,8 +7,9 @@ import {
   Mail, 
   Users, 
   Settings, 
-  Bell, 
+  Bell,
   ChevronDown,
+  Home,
   LogOut
 } from 'lucide-react'
 import { useState } from 'react'
@@ -131,6 +132,8 @@ export default function PremiumAdminDashboard() {
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
+              onClick={() => navigate('/admin/contact')}
+              title="View messages"
               className="relative p-2 text-slate-300 hover:text-white transition-colors"
             >
               <Bell className="w-5 h-5" />
