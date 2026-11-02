@@ -6,19 +6,75 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'portfolio-dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET must be configured in production.');
+}
+
+const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+  ? nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    })
+  : null;
 
 // ---- Paths (always relative to THIS file, never to process.cwd()) ----
 const DB_PATH = path.join(__dirname, '..', 'portfolio.db');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173')
+  .split(',').map((origin) => origin.trim()).filter(Boolean));
+app.use(cors({ origin(origin, callback) {
+  if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+  return callback(new Error('This website origin is not allowed by the API.'));
+} }));
+app.use(express.json({ limit: '50kb' }));
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  });
+  next();
+});
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 app.use('/uploads', express.static(UPLOAD_DIR));
+
+const requestBuckets = new Map();
+function limitRequests({ windowMs, max, message }) {
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = `${req.path}:${req.ip || req.socket.remoteAddress || 'unknown'}`;
+    const bucket = requestBuckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      requestBuckets.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    bucket.count += 1;
+    if (bucket.count > max) {
+      res.set('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
+      return res.status(429).json({ error: message });
+    }
+    next();
+  };
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of requestBuckets) if (bucket.resetAt <= now) requestBuckets.delete(key);
+}, 60_000).unref();
 
 // ---- File uploads (project images, profile photo) ----
 const storage = multer.diskStorage({
@@ -114,6 +170,10 @@ const aboutToJson = (row) =>
         email: row.email || '',
         phone: row.phone || '',
         location: row.location || '',
+        cvUrl: row.cv_url || '',
+        githubUrl: row.github_url || '',
+        linkedinUrl: row.linkedin_url || '',
+        twitterUrl: row.twitter_url || '',
       }
     : null;
 
@@ -158,6 +218,11 @@ function requireAuth(req, res, next) {
   }
 }
 
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Administrator access required' });
+  next();
+}
+
 // ---------- schema + seed ----------
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -166,6 +231,11 @@ db.serialize(() => {
     password TEXT,
     name TEXT,
     role TEXT DEFAULT 'admin'
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    user_id INTEGER PRIMARY KEY,
+    token_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +270,15 @@ db.serialize(() => {
     description TEXT,
     email TEXT,
     phone TEXT,
-    location TEXT
+    location TEXT,
+    cv_url TEXT DEFAULT '',
+    github_url TEXT DEFAULT '',
+    linkedin_url TEXT DEFAULT '',
+    twitter_url TEXT DEFAULT ''
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS visit_days (
+    day TEXT PRIMARY KEY,
+    visits INTEGER NOT NULL DEFAULT 0
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,23 +304,50 @@ const seedIfEmpty = async (table, sql, rows) => {
 };
 
 const seedData = async () => {
-  await seedIfEmpty(
-    'users',
-    'INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
-    [['admin@mugishaprince.com', bcrypt.hashSync('Admin123!', 10), 'Mugisha Prince', 'admin']],
-  );
+  const aboutColumns = await all('PRAGMA table_info(about_content)');
+  const existingAboutColumns = new Set(aboutColumns.map((column) => column.name));
+  for (const [column, definition] of [
+    ['cv_url', "TEXT DEFAULT ''"],
+    ['github_url', "TEXT DEFAULT ''"],
+    ['linkedin_url', "TEXT DEFAULT ''"],
+    ['twitter_url', "TEXT DEFAULT ''"],
+  ]) {
+    if (!existingAboutColumns.has(column)) {
+      await run(`ALTER TABLE about_content ADD COLUMN ${column} ${definition}`);
+    }
+  }
 
-  await seedIfEmpty(
-    'projects',
-    `INSERT INTO projects (title, description, technologies, live_demo_url, github_url, category, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      ['School Management System', 'A complete system to manage students, teachers, classes, and subjects.', JSON.stringify(['React', 'Node.js', 'MySQL']), '', '', 'Web Apps', 'Published'],
-      ['Timetable Management System', 'Manage class schedules, subjects and teachers with an interactive system.', JSON.stringify(['React', 'Node.js', 'MySQL']), '', '', 'Web Apps', 'Published'],
-      ['Portfolio Website', 'Personal portfolio website with admin panel.', JSON.stringify(['React', 'Express', 'MongoDB']), '', '', 'Full Stack', 'Published'],
-      ['Task Management App', 'A simple task manager with real-time updates.', JSON.stringify(['React', 'Firebase']), '', '', 'Web Apps', 'Published'],
-    ],
-  );
+  // Remove only the legacy, publicly documented demo account if its password
+  // is still unchanged. Never create a known default administrator.
+  const legacyAdmin = await get('SELECT id, password FROM users WHERE email = ?', ['admin@mugishaprince.com']);
+  if (legacyAdmin && await bcrypt.compare('Admin123!', legacyAdmin.password)) {
+    await run('DELETE FROM users WHERE id = ?', [legacyAdmin.id]);
+    console.warn('[auth] removed the insecure legacy demo admin; configure ADMIN_EMAIL and ADMIN_PASSWORD');
+  }
+
+  if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+    const adminEmail = process.env.ADMIN_EMAIL.toLowerCase().trim();
+    if (!EMAIL_RE.test(adminEmail)) throw new Error('ADMIN_EMAIL must be a valid email address');
+    if (process.env.ADMIN_PASSWORD.length < 12) throw new Error('ADMIN_PASSWORD must be at least 12 characters');
+    const existingAdmin = await get('SELECT id FROM users WHERE email = ?', [adminEmail]);
+    if (!existingAdmin) {
+      await run('INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)', [
+        adminEmail,
+        bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12),
+        process.env.ADMIN_NAME || 'Portfolio Admin',
+        'admin',
+      ]);
+      console.log('[auth] configured administrator created from environment');
+    } else if (process.env.ADMIN_RESET_PASSWORD === 'true') {
+      await run('UPDATE users SET password = ?, name = ?, role = ? WHERE id = ?', [
+        bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12),
+        process.env.ADMIN_NAME || 'Portfolio Admin',
+        'admin',
+        existingAdmin.id,
+      ]);
+      console.log('[auth] administrator password reset from environment');
+    }
+  }
 
   await seedIfEmpty(
     'skills',
@@ -291,7 +396,7 @@ const seedData = async () => {
   console.log(`[db] ready at ${DB_PATH}`);
 };
 
-seedData().catch((err) => console.error('[seed] failed:', err));
+const startupReady = seedData();
 
 // ---------- auth routes ----------
 app.post('/api/login', asyncRoute(async (req, res) => {
@@ -309,6 +414,47 @@ app.post('/api/login', asyncRoute(async (req, res) => {
     { expiresIn: '7d' },
   );
   res.json({ token, user: userToJson(user) });
+}));
+
+app.post('/api/password-reset/request', asyncRoute(async (req, res) => {
+  const email = String(req.body?.email || '').toLowerCase().trim();
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
+  if (!mailer) return res.status(503).json({ error: 'Password reset email is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS on the server.' });
+
+  const user = await get('SELECT id, email FROM users WHERE email = ?', [email]);
+  if (user) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = Date.now() + 30 * 60 * 1000;
+    await run('INSERT OR REPLACE INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [user.id, tokenHash, expiresAt]);
+    const resetUrl = `${APP_URL.replace(/\/$/, '')}/#/admin/reset-password?token=${token}`;
+    try {
+      await mailer.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: user.email,
+        subject: 'Reset your portfolio admin password',
+        text: `Use this link within 30 minutes to reset your password: ${resetUrl}`,
+        html: `<p>Use this link within 30 minutes to reset your password:</p><p><a href="${resetUrl}">Reset password</a></p>`,
+      });
+    } catch (error) {
+      await run('DELETE FROM password_reset_tokens WHERE user_id = ?', [user.id]);
+      throw error;
+    }
+  }
+  res.json({ success: true, message: 'If the account exists, a password reset link has been sent.' });
+}));
+
+app.post('/api/password-reset/complete', asyncRoute(async (req, res) => {
+  const token = String(req.body?.token || '');
+  const password = String(req.body?.password || '');
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  if (!/^[a-f0-9]{64}$/i.test(token)) return res.status(400).json({ error: 'This reset link is invalid or expired' });
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const reset = await get('SELECT user_id FROM password_reset_tokens WHERE token_hash = ? AND expires_at > ?', [tokenHash, Date.now()]);
+  if (!reset) return res.status(400).json({ error: 'This reset link is invalid or expired' });
+  await run('UPDATE users SET password = ? WHERE id = ?', [bcrypt.hashSync(password, 12), reset.user_id]);
+  await run('DELETE FROM password_reset_tokens WHERE user_id = ?', [reset.user_id]);
+  res.json({ success: true });
 }));
 
 // ---------- projects ----------
@@ -347,8 +493,6 @@ app.put('/api/projects/:id', requireAuth, upload.any(), asyncRoute(async (req, r
   const file = findUploadedFile(req);
   const b = req.body || {};
   const imagePath = file ? file.filename : (b.image !== undefined ? b.image : existing.image_path);
-  if (file && existing.image_path) removeUploadedFile(existing.image_path);
-
   await run(
     `UPDATE projects SET title = ?, description = ?, technologies = ?, image_path = ?,
      live_demo_url = ?, github_url = ?, category = ?, status = ? WHERE id = ?`,
@@ -364,6 +508,7 @@ app.put('/api/projects/:id', requireAuth, upload.any(), asyncRoute(async (req, r
       existing.id,
     ],
   );
+  if (file && existing.image_path) removeUploadedFile(existing.image_path);
   const row = await get('SELECT * FROM projects WHERE id = ?', [existing.id]);
   res.json(projectToJson(row));
 }));
@@ -428,7 +573,6 @@ app.put('/api/home', requireAuth, upload.any(), asyncRoute(async (req, res) => {
   const profileImage = file ? file.filename : (b.profileImage !== undefined ? b.profileImage : (existing ? existing.profile_image : ''));
 
   if (existing) {
-    if (file && existing.profile_image) removeUploadedFile(existing.profile_image);
     await run(
       'UPDATE home_content SET greeting = ?, name = ?, title = ?, description = ?, profile_image = ? WHERE id = ?',
       [
@@ -440,6 +584,7 @@ app.put('/api/home', requireAuth, upload.any(), asyncRoute(async (req, res) => {
         existing.id,
       ],
     );
+    if (file && existing.profile_image) removeUploadedFile(existing.profile_image);
     const row = await get('SELECT * FROM home_content WHERE id = ?', [existing.id]);
     return res.json(homeToJson(row));
   }
@@ -464,7 +609,8 @@ app.put('/api/about', requireAuth, asyncRoute(async (req, res) => {
 
   if (existing) {
     await run(
-      'UPDATE about_content SET name = ?, title = ?, description = ?, email = ?, phone = ?, location = ? WHERE id = ?',
+      `UPDATE about_content SET name = ?, title = ?, description = ?, email = ?, phone = ?, location = ?,
+       cv_url = ?, github_url = ?, linkedin_url = ?, twitter_url = ? WHERE id = ?`,
       [
         b.name !== undefined ? b.name : existing.name,
         b.title !== undefined ? b.title : existing.title,
@@ -472,6 +618,10 @@ app.put('/api/about', requireAuth, asyncRoute(async (req, res) => {
         b.email !== undefined ? b.email : existing.email,
         b.phone !== undefined ? b.phone : existing.phone,
         b.location !== undefined ? b.location : existing.location,
+        b.cvUrl !== undefined ? b.cvUrl : existing.cv_url,
+        b.githubUrl !== undefined ? b.githubUrl : existing.github_url,
+        b.linkedinUrl !== undefined ? b.linkedinUrl : existing.linkedin_url,
+        b.twitterUrl !== undefined ? b.twitterUrl : existing.twitter_url,
         existing.id,
       ],
     );
@@ -480,8 +630,9 @@ app.put('/api/about', requireAuth, asyncRoute(async (req, res) => {
   }
 
   const info = await run(
-    'INSERT INTO about_content (name, title, description, email, phone, location) VALUES (?, ?, ?, ?, ?, ?)',
-    [b.name || '', b.title || '', b.description || '', b.email || '', b.phone || '', b.location || ''],
+    `INSERT INTO about_content (name, title, description, email, phone, location, cv_url, github_url, linkedin_url, twitter_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.name || '', b.title || '', b.description || '', b.email || '', b.phone || '', b.location || '', b.cvUrl || '', b.githubUrl || '', b.linkedinUrl || '', b.twitterUrl || ''],
   );
   const row = await get('SELECT * FROM about_content WHERE id = ?', [info.lastID]);
   res.status(201).json(aboutToJson(row));
@@ -526,12 +677,12 @@ app.delete('/api/messages/:id', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 // ---------- users ----------
-app.get('/api/users', requireAuth, asyncRoute(async (req, res) => {
+app.get('/api/users', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   const rows = await all('SELECT id, name, email, role FROM users ORDER BY id ASC');
   res.json(rows.map(userToJson));
 }));
 
-app.post('/api/users', requireAuth, asyncRoute(async (req, res) => {
+app.post('/api/users', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   const { name, email, password, role } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
   if (!email || !EMAIL_RE.test(String(email).trim())) return res.status(400).json({ error: 'A valid email is required' });
@@ -551,7 +702,7 @@ app.post('/api/users', requireAuth, asyncRoute(async (req, res) => {
   res.status(201).json(userToJson(row));
 }));
 
-app.delete('/api/users/:id', requireAuth, asyncRoute(async (req, res) => {
+app.delete('/api/users/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   const targetId = Number(req.params.id);
   if (targetId === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' });
 
@@ -581,7 +732,7 @@ app.post('/api/change-password', requireAuth, asyncRoute(async (req, res) => {
 
 // ---------- dashboard stats ----------
 app.get('/api/stats', requireAuth, asyncRoute(async (req, res) => {
-  const [projects, published, skills, messages, unread, users, visits, categories] = await Promise.all([
+  const [projects, published, skills, messages, unread, users, visits, categories, visitorTrend] = await Promise.all([
     get('SELECT COUNT(*) AS n FROM projects'),
     get("SELECT COUNT(*) AS n FROM projects WHERE status = 'Published'"),
     get('SELECT COUNT(*) AS n FROM skills'),
@@ -590,6 +741,7 @@ app.get('/api/stats', requireAuth, asyncRoute(async (req, res) => {
     get('SELECT COUNT(*) AS n FROM users'),
     get("SELECT value FROM counters WHERE key = 'visits'"),
     all("SELECT category, COUNT(*) AS value FROM projects WHERE status = 'Published' GROUP BY category"),
+    all("SELECT day, visits FROM visit_days WHERE day >= date('now', '-6 days') ORDER BY day ASC"),
   ]);
   res.json({
     totalProjects: projects.n,
@@ -600,6 +752,7 @@ app.get('/api/stats', requireAuth, asyncRoute(async (req, res) => {
     totalUsers: users.n,
     totalVisits: visits ? visits.value : 0,
     categories: categories.map((c) => ({ name: c.category || 'Other', value: c.value })),
+    visitorTrend,
   });
 }));
 
@@ -638,6 +791,7 @@ app.get('/api/activities', requireAuth, asyncRoute(async (req, res) => {
 // ---------- public visit counter ----------
 app.post('/api/visit', asyncRoute(async (req, res) => {
   await run('INSERT INTO counters (key, value) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET value = value + 1', ['visits']);
+  await run("INSERT INTO visit_days (day, visits) VALUES (date('now'), 1) ON CONFLICT(day) DO UPDATE SET visits = visits + 1");
   const row = await get("SELECT value FROM counters WHERE key = 'visits'");
   res.json({ visits: row ? row.value : 1 });
 }));
@@ -650,7 +804,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`[server] API listening on http://localhost:${PORT}`);
-  console.log(`[server] uploads -> ${UPLOAD_DIR}`);
-});
+startupReady
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`[server] API listening on http://localhost:${PORT}`);
+      console.log(`[server] uploads -> ${UPLOAD_DIR}`);
+    });
+  })
+  .catch((err) => {
+    console.error('[server] startup failed:', err);
+    process.exitCode = 1;
+  });

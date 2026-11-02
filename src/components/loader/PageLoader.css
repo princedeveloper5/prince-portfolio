@@ -6,7 +6,8 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: inherit;
+  background: #020b16;
   transition: opacity 420ms ease, visibility 420ms ease;
 }
 
@@ -19,7 +20,7 @@
 .page-loader__bg {
   position: absolute;
   inset: 0;
-  background: radial-gradient(1200px 800px at 50% 50%, #06182a 0%, #020b16 55%, #01070f 100%);
+  background: radial-gradient(900px 620px at 50% 48%, #06182a 0%, #020b16 60%, #020b16 100%);
   animation: page-loader-fade-in 700ms ease forwards;
 }
 
@@ -29,8 +30,8 @@
   height: min(520px, 70vw);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(22, 139, 255, 0.16) 0%, rgba(25, 200, 255, 0.08) 35%, transparent 70%);
-  filter: blur(40px);
-  animation: page-loader-glow-pulse 2200ms ease-in-out infinite;
+  filter: blur(36px);
+  animation: page-loader-glow-pulse 2600ms ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -70,7 +71,7 @@
   background: conic-gradient(from 0deg, transparent 0deg, rgba(25, 200, 255, 0.28) 80deg, transparent 160deg);
   mask: radial-gradient(circle, transparent 58%, black 60%);
   -webkit-mask: radial-gradient(circle, transparent 58%, black 60%);
-  animation: page-loader-shine 2200ms linear infinite;
+  animation: page-loader-shine 2600ms ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -109,9 +110,9 @@
 
 .page-loader__progress {
   width: clamp(220px, 36vw, 320px);
-  height: 2px;
+  height: 3px;
   border-radius: 999px;
-  background: rgba(170, 184, 202, 0.18);
+  background: rgba(170, 184, 202, 0.24);
   overflow: hidden;
   position: relative;
   animation: page-loader-rise 900ms ease 280ms forwards;
@@ -123,7 +124,7 @@
   position: absolute;
   inset: 0;
   background: linear-gradient(90deg, transparent 0%, rgba(22, 139, 255, 0.9) 40%, rgba(25, 200, 255, 1) 50%, rgba(22, 139, 255, 0.9) 60%, transparent 100%);
-  animation: page-loader-progress 1600ms ease-in-out infinite;
+  animation: page-loader-progress 1400ms ease-in-out infinite;
 }
 
 .page-loader__status {
@@ -244,8 +245,21 @@
 }
 
 @media (max-width: 640px) {
+  .page-loader__content {
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .page-loader__name {
+    letter-spacing: 0.04em;
+  }
+
   .page-loader__title {
-    letter-spacing: 0.4em;
+    letter-spacing: 0.3em;
+  }
+
+  .page-loader__progress {
+    width: min(280px, 72vw);
   }
 }
 
@@ -263,6 +277,14 @@
   .page-loader__error {
     animation: none !important;
     transition: none !important;
+  }
+
+  .page-loader__glow {
+    display: none;
+  }
+
+  .page-loader__shine {
+    animation: none !important;
   }
 
   .page-loader__bg {
@@ -289,7 +311,7 @@
   .page-loader__progress-bar {
     animation: none;
     transform: translateX(0);
-    width: 40%;
-    left: 30%;
+    width: 44%;
+    left: 28%;
   }
 }

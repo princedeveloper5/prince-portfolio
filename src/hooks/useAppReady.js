@@ -1,51 +1,38 @@
 import { useEffect, useState } from 'react'
 
-export function useAppReady({ minDelay = 650 } = {}) {
+// The portfolio's initial route uses bundled content. Network calls such as
+// visit tracking and optional images are intentionally not readiness blockers.
+export function useAppReady({ minDelay = 320, maxWait = 1200 } = {}) {
   const [ready, setReady] = useState(false)
-  const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
-    let timeoutId
+    let readyTimer
 
     const markReady = () => {
-      if (cancelled) return
-      timeoutId = window.setTimeout(() => {
-        if (cancelled) return
-        setReady(true)
+      if (cancelled || readyTimer) return
+      readyTimer = window.setTimeout(() => {
+        if (!cancelled) setReady(true)
       }, minDelay)
     }
 
-    const handleLoad = () => {
-      if (document.fonts && document.fonts.ready) {
-        document.fonts.ready
-          .catch(() => {})
-          .finally(markReady)
-        return
-      }
+    // Fonts improve the first paint, but should never keep the visitor waiting.
+    const fontTimer = window.setTimeout(markReady, maxWait)
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(markReady, markReady)
+    } else if (document.readyState === 'complete') {
       markReady()
-    }
-
-    if (document.readyState === 'complete') {
-      handleLoad()
     } else {
-      window.addEventListener('load', handleLoad, { once: true })
+      window.addEventListener('load', markReady, { once: true })
     }
 
     return () => {
       cancelled = true
-      window.removeEventListener('load', handleLoad)
-      if (timeoutId) window.clearTimeout(timeoutId)
+      window.removeEventListener('load', markReady)
+      window.clearTimeout(fontTimer)
+      window.clearTimeout(readyTimer)
     }
-  }, [minDelay])
+  }, [maxWait, minDelay])
 
-  const retry = () => {
-    setError(null)
-    setReady(false)
-    window.setTimeout(() => {
-      setReady(true)
-    }, 400)
-  }
-
-  return { ready, error, retry }
+  return { ready }
 }

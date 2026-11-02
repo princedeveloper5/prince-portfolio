@@ -198,19 +198,14 @@ export default function ProjectsManagement() {
           auth: true,
           body,
         })
-        console.log('[E2E] PUT resolved', JSON.stringify(updated).slice(0, 80))
         setProjects(prev => prev.map(p => (p.id === editingProject.id ? updated : p)))
       } else {
         const created = await api('/api/projects', { method: 'POST', auth: true, body })
-        console.log('[E2E] POST resolved')
         setProjects(prev => [created, ...prev])
       }
       setListError('')
-      console.log('[E2E] before closeModal')
       closeModal()
-      console.log('[E2E] after closeModal')
     } catch (error) {
-      console.log('[E2E] catch', error.message)
       setErrors(prev => ({
         ...prev,
         submit: isOfflineError(error)
@@ -218,7 +213,6 @@ export default function ProjectsManagement() {
           : error.message,
       }))
     } finally {
-      console.log('[E2E] finally, loading=false')
       setLoading(false)
     }
   }

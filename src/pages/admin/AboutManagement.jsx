@@ -3,14 +3,14 @@ import { Mail, Phone, MapPin, Edit, Save, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { api, isOfflineError } from '../../api.js'
+import { SITE_CONTACT } from '../../siteConfig.js'
 
 const DEFAULTS = {
+  ...SITE_CONTACT,
   name: 'Mugisha Prince',
   title: 'Software Developer',
   description: 'Passionate software developer with expertise in building modern web applications and solving real-world problems through technology.',
-  email: 'mugishaprince@gmail.com',
-  phone: '+250 xxx xxx xxx',
-  location: 'Rwanda'
+  cvUrl: '', githubUrl: '', linkedinUrl: '', twitterUrl: '',
 }
 
 export default function AboutManagement() {
@@ -30,6 +30,8 @@ export default function AboutManagement() {
           email: data.email || DEFAULTS.email,
           phone: data.phone || DEFAULTS.phone,
           location: data.location || DEFAULTS.location,
+          cvUrl: data.cvUrl || '', githubUrl: data.githubUrl || '',
+          linkedinUrl: data.linkedinUrl || '', twitterUrl: data.twitterUrl || '',
         })
       })
       .catch((err) => setStatus(`⚠ ${err.message}`))
@@ -177,6 +179,19 @@ export default function AboutManagement() {
                     <p className="text-white">{aboutData.email}</p>
                   )}
                 </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 border-t border-blue-500/20 pt-4">
+                <p className="text-sm font-semibold text-white">Public links</p>
+                {[
+                  ['cvUrl', 'CV file URL'], ['githubUrl', 'GitHub URL'],
+                  ['linkedinUrl', 'LinkedIn URL'], ['twitterUrl', 'Twitter / X URL'],
+                ].map(([field, label]) => (
+                  <label key={field} className="block text-xs text-slate-400">
+                    {label}
+                    {editing ? <input type="url" value={aboutData[field] || ''} onChange={(event) => setAboutData({ ...aboutData, [field]: event.target.value })} placeholder="https://..." className="mt-1 w-full rounded border border-blue-500/30 bg-[#050B18] px-2 py-2 text-sm text-white" /> : <span className="mt-1 block break-all text-slate-300">{aboutData[field] || 'Not set'}</span>}
+                  </label>
+                ))}
+                {editing && <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 justify-self-start rounded-lg bg-green-600 px-4 py-2 text-white disabled:opacity-60"><Save className="h-4 w-4" />{saving ? 'Saving...' : 'Save Changes'}</button>}
               </div>
               <div className="flex items-center gap-3">
                 <Phone className="w-5 h-5 text-cyan-400" />

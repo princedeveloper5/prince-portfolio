@@ -8,28 +8,28 @@ const STATUS_MESSAGES = [
   'Almost ready...',
 ]
 
-export default function PageLoader({ ready = false, error = null, onRetry = null }) {
+export default function PageLoader({ ready = false }) {
   const [shouldHide, setShouldHide] = useState(false)
   const [messageIndex, setMessageIndex] = useState(0)
 
   useEffect(() => {
-    if (!ready) {
+    if (ready) {
+      const timer = setTimeout(() => {
+        setShouldHide(true)
+      }, 420)
+      return () => clearTimeout(timer)
+    } else {
       setShouldHide(false)
-      return
     }
-    const timer = setTimeout(() => {
-      setShouldHide(true)
-    }, 420)
-    return () => clearTimeout(timer)
   }, [ready])
 
   useEffect(() => {
-    if (ready || error) return
+    if (ready) return
     const interval = setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % STATUS_MESSAGES.length)
     }, 900)
     return () => clearInterval(interval)
-  }, [ready, error])
+  }, [ready])
 
   if (shouldHide) {
     return null
@@ -37,9 +37,10 @@ export default function PageLoader({ ready = false, error = null, onRetry = null
 
   return (
     <div
-      className={page-loader }
+      className={`page-loader${shouldHide ? ' page-loader--hiding' : ''}`}
       role="status"
       aria-live="polite"
+      aria-busy={!ready}
       aria-label="Loading Mugisha Prince portfolio"
     >
       <div className="page-loader__bg" aria-hidden="true" />
@@ -54,25 +55,11 @@ export default function PageLoader({ ready = false, error = null, onRetry = null
           <h1 className="page-loader__name">Mugisha Prince</h1>
           <p className="page-loader__title">SOFTWARE DEVELOPER</p>
         </div>
-        {error ? (
-          <div className="page-loader__error" role="alert">
-            <p className="page-loader__error-text">Something went wrong while loading.</p>
-            {onRetry && (
-              <button className="page-loader__retry" onClick={onRetry} type="button">
-                Try again
-              </button>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="page-loader__progress" aria-hidden="true">
-              <div className="page-loader__progress-bar" />
-            </div>
-            <p className="page-loader__status">{STATUS_MESSAGES[messageIndex]}</p>
-          </>
-        )}
+        <div className="page-loader__progress" aria-hidden="true">
+          <div className="page-loader__progress-bar" />
+        </div>
+        <p className="page-loader__status">{STATUS_MESSAGES[messageIndex]}</p>
       </div>
-      <span className="page-loader__sr-only">Loading Mugisha Prince - Software Developer portfolio</span>
     </div>
   )
 }

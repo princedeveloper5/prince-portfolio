@@ -3,20 +3,17 @@ import { api, getToken, setToken } from './api.js'
 
 const AuthContext = createContext(null)
 
-// Offline demo fallback — only used when the API server is unreachable.
-// Real logins go through POST /api/login and are checked in the database.
-const OFFLINE_CREDENTIALS = {
-  email: 'admin@mugishaprince.com',
-  password: 'Admin123!',
-}
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const storedUser = localStorage.getItem('admin_user')
-    if (storedUser && getToken()) {
+    const token = getToken()
+    if (token === 'offline-session') {
+      localStorage.removeItem('admin_user')
+      setToken('')
+    } else if (storedUser && token) {
       try {
         setUser(JSON.parse(storedUser))
       } catch {
@@ -47,29 +44,9 @@ export function AuthProvider({ children }) {
   }
 
   const login = async (email, password) => {
-    try {
-      const data = await api('/api/login', {
-        method: 'POST',
-        body: { email, password },
-      })
-      persistSession(data.token, data.user)
-      return { success: true }
-    } catch (error) {
-      // Server down → allow the demo account so the panel isn't locked out.
-      if (
-        error.offline &&
-        email === OFFLINE_CREDENTIALS.email &&
-        password === OFFLINE_CREDENTIALS.password
-      ) {
-        persistSession('offline-session', {
-          email,
-          role: 'admin',
-          name: 'Mugisha Prince',
-        })
-        return { success: true, offline: true }
-      }
-      throw error
-    }
+    const data = await api('/api/login', { method: 'POST', body: { email, password } })
+    persistSession(data.token, data.user)
+    return { success: true }
   }
 
   const logout = () => {
@@ -78,9 +55,8 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('admin_user')
   }
 
-  const forgotPassword = async () => {
-    // Don't reveal whether the email exists.
-    return { success: true }
+  const forgotPassword = async (email) => {
+    return api('/api/password-reset/request', { method: 'POST', body: { email } })
   }
 
   return (

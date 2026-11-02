@@ -15,96 +15,30 @@ import UsersManagement from './pages/admin/UsersManagement.jsx'
 import SettingsPage from './pages/admin/SettingsPage.jsx'
 import HomePageEditor from './pages/admin/HomePageEditor.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
-import PageLoader from './components/loader/PageLoader.jsx'
-import { useAppReady } from './hooks/useAppReady.js'
+import NotFoundPage from './pages/NotFoundPage.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
 
 export default function App() {
-  const { ready, error, retry } = useAppReady({ minDelay: 700 })
-
   return (
-    <>
-      <PageLoader ready={ready} error={error} onRetry={retry} />
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/projects" element={<ProjectsPage />} />
-        <Route path="/skills" element={<SkillsPage />} />
-        <Route path="/contact" element={<ContactPage />} />
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/admin/forgot-password" element={<ForgotPassword />} />
-        <Route
-          path="/admin/dashboard"
-          element={
-            <ProtectedRoute>
-              <PremiumAdminDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/home"
-          element={
-            <ProtectedRoute>
-              <HomePageEditor />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/projects"
-          element={
-            <ProtectedRoute>
-              <ProjectsManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/projects/add"
-          element={
-            <ProtectedRoute>
-              <ProjectsManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/skills"
-          element={
-            <ProtectedRoute>
-              <SkillsManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/about"
-          element={
-            <ProtectedRoute>
-              <AboutManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/contact"
-          element={
-            <ProtectedRoute>
-              <ContactManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/users"
-          element={
-            <ProtectedRoute>
-              <UsersManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/settings"
-          element={
-            <ProtectedRoute>
-              <SettingsPage />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
-    </>
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/projects" element={<ProjectsPage />} />
+      <Route path="/skills" element={<SkillsPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+      <Route path="/admin/reset-password" element={<ResetPassword />} />
+      <Route path="/admin/dashboard" element={<ProtectedRoute><PremiumAdminDashboard /></ProtectedRoute>} />
+      <Route path="/admin/home" element={<ProtectedRoute><HomePageEditor /></ProtectedRoute>} />
+      <Route path="/admin/projects" element={<ProtectedRoute><ProjectsManagement /></ProtectedRoute>} />
+      <Route path="/admin/projects/add" element={<ProtectedRoute><ProjectsManagement /></ProtectedRoute>} />
+      <Route path="/admin/skills" element={<ProtectedRoute><SkillsManagement /></ProtectedRoute>} />
+      <Route path="/admin/about" element={<ProtectedRoute><AboutManagement /></ProtectedRoute>} />
+      <Route path="/admin/contact" element={<ProtectedRoute><ContactManagement /></ProtectedRoute>} />
+      <Route path="/admin/users" element={<ProtectedRoute adminOnly><UsersManagement /></ProtectedRoute>} />
+      <Route path="/admin/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
   )
 }

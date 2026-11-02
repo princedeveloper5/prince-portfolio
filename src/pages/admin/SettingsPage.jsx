@@ -92,13 +92,13 @@ export default function SettingsPage() {
           >
             <div className="flex items-center gap-2 mb-4">
               <Bell className="w-5 h-5 text-cyan-400" />
-              <h2 className="text-xl font-semibold text-white">Notifications</h2>
+              <h2 className="text-xl font-semibold text-white">Local preferences</h2>
             </div>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white">Push Notifications</p>
-                  <p className="text-sm text-slate-400">Receive notifications in dashboard</p>
+                  <p className="text-white">Dashboard notification preference</p>
+                  <p className="text-sm text-slate-400">Saved for this browser; push notifications are not configured.</p>
                 </div>
                 <button
                   type="button"
@@ -113,8 +113,8 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white">Email Alerts</p>
-                  <p className="text-sm text-slate-400">Get email notifications for messages</p>
+                  <p className="text-white">Email alert preference</p>
+                  <p className="text-sm text-slate-400">Saved for this browser; email delivery is not configured.</p>
                 </div>
                 <button
                   type="button"

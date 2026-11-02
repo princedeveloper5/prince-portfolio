@@ -79,7 +79,7 @@ export default function HomePageEditor() {
       }
       setSelectedFile(null)
       setEditing(false)
-      setStatus('✓ Saved — reload the homepage to see it.')
+      setStatus('✓ Saved. The public homepage will use these changes when opened or refreshed.')
     } catch (err) {
       setStatus(
         isOfflineError(err)

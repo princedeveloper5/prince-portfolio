@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Moon, Sun } from 'lucide-react'
 import Logo from './Logo'
 
@@ -13,12 +13,23 @@ const navLinks = [
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
+  const location = useLocation()
   const [theme, setTheme] = useState(() => window.localStorage?.getItem('theme') || 'dark')
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     window.localStorage?.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [])
+
+  useEffect(() => setIsOpen(false), [location.pathname, location.search])
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
 
@@ -63,7 +74,9 @@ export default function Navbar() {
               type="button"
               onClick={() => setIsOpen(!isOpen)}
               className="md:hidden text-gray-300 hover:text-white"
-              aria-label="Toggle menu"
+              aria-label={isOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={isOpen}
+              aria-controls="mobile-navigation"
             >
               {isOpen ? <span>✕</span> : <span>☰</span>}
             </button>
@@ -72,7 +85,7 @@ export default function Navbar() {
       </div>
 
       {isOpen && (
-        <div className="md:hidden bg-navy-800 border-b border-navy-600">
+        <div id="mobile-navigation" className="md:hidden bg-navy-800 border-b border-navy-600">
           <div className="px-4 pt-2 pb-4 space-y-2">
             {navLinks.map((link) => (
               <NavLink

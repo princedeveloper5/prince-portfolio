@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Folder, Code, MessageSquare, Users, Plus, Search, Filter, ArrowUp } from 'lucide-react'
+import { Folder, Code, MessageSquare, Users, Plus, Search } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -39,9 +39,11 @@ function Counter({ value, duration = 2 }) {
       return
     }
     let start = 0
-    const stepMs = Math.max(20, (duration * 1000) / end)
+    const frames = Math.min(60, end)
+    const increment = Math.max(1, Math.ceil(end / frames))
+    const stepMs = (duration * 1000) / frames
     const timer = setInterval(() => {
-      start += 1
+      start = Math.min(end, start + increment)
       if (start >= end) {
         setCount(end)
         clearInterval(timer)
@@ -55,20 +57,7 @@ function Counter({ value, duration = 2 }) {
   return <span>{count}{suffix}</span>
 }
 
-const lineData = [
-  { name: 'Jan', visitors: 400 },
-  { name: 'Feb', visitors: 300 },
-  { name: 'Mar', visitors: 600 },
-  { name: 'Apr', visitors: 800 },
-  { name: 'May', visitors: 500 },
-  { name: 'Jun', visitors: 900 },
-]
-
-const pieData = [
-  { name: 'Web Apps', value: 4, color: '#2563EB' },
-  { name: 'Full Stack', value: 1, color: '#38BDF8' },
-  { name: 'Mobile Apps', value: 1, color: '#8B5CF6' },
-]
+const COLORS = ['#2563EB', '#38BDF8', '#8B5CF6', '#22C55E', '#F59E0B']
 
 const DEFAULT_ACTIVITIES = [
   { action: 'Portfolio ready', item: 'Add your first project from the Projects page', time: null, color: '#22C55E' },
@@ -81,32 +70,36 @@ export default function DashboardContent() {
   const [recentProjects, setRecentProjects] = useState([])
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES)
   const [loadError, setLoadError] = useState('')
+  const [search, setSearch] = useState('')
+  const [projectFilter, setProjectFilter] = useState('All')
 
   useEffect(() => {
     let cancelled = false
 
-    api('/api/stats', { auth: true })
-      .then((data) => { if (!cancelled && data) setStats(data) })
-      .catch((err) => { if (!cancelled) setLoadError(err.message) })
-
-    api('/api/projects', { auth: true })
-      .then((rows) => {
-        if (!cancelled && Array.isArray(rows)) {
-          setRecentProjects(rows.slice(0, 5).map((p) => ({
+    const refresh = () => {
+      api('/api/stats', { auth: true })
+        .then((data) => { if (!cancelled && data) { setStats(data); setLoadError('') } })
+        .catch((err) => { if (!cancelled) setLoadError(err.message) })
+      api('/api/projects', { auth: true })
+        .then((rows) => {
+          if (!cancelled && Array.isArray(rows)) setRecentProjects(rows
+            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+            .slice(0, 20).map((p) => ({
             title: p.title,
             status: p.status || 'Draft',
             date: formatDate(p.createdAt),
           })))
-        }
-      })
-      .catch(() => {})
-
-    api('/api/activities', { auth: true })
-      .then((rows) => { if (!cancelled && Array.isArray(rows) && rows.length) setActivities(rows) })
-      .catch(() => {})
+        }).catch(() => {})
+      api('/api/activities', { auth: true })
+        .then((rows) => { if (!cancelled && Array.isArray(rows)) setActivities(rows) })
+        .catch(() => {})
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
 
     return () => {
       cancelled = true
+      window.removeEventListener('focus', refresh)
     }
   }, [])
 
@@ -117,12 +110,20 @@ export default function DashboardContent() {
     { icon: Users, label: 'Total Visitors', value: stats ? stats.totalVisits : 0, color: '#22C55E' },
   ]
 
-  const pieData = stats && stats.categories && stats.categories.length
+  const pieData = stats?.categories?.length
     ? stats.categories.map((c, i) => ({
         ...c,
         color: ['#2563EB', '#38BDF8', '#8B5CF6', '#22C55E', '#F59E0B'][i % 5],
       }))
-    : [{ name: 'No published projects', value: 1, color: '#1E293B' }]
+    : []
+  const lineData = (stats?.visitorTrend || []).map((row) => ({
+    name: new Date(`${row.day}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' }),
+    visitors: Number(row.visits) || 0,
+  }))
+  const filteredProjects = recentProjects.filter((project) =>
+    project.title.toLowerCase().includes(search.trim().toLowerCase()) &&
+    (projectFilter === 'All' || project.status === projectFilter),
+  )
 
   return (
     <motion.div
@@ -155,7 +156,7 @@ export default function DashboardContent() {
                 >
                   <card.icon className="w-6 h-6 text-cyan-400" />
                 </motion.div>
-                <ArrowUp className="w-4 h-4 text-green-400" />
+                <span className="text-xs text-slate-500">Live</span>
               </div>
               <div className="text-3xl font-bold text-white mb-1">
                 <Counter value={card.value} />
@@ -188,13 +189,15 @@ export default function DashboardContent() {
                 <input
                   type="text"
                   placeholder="Search projects..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  aria-label="Search recent projects"
                   className="w-full pl-10 pr-4 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
                 />
               </div>
-              <button className="flex items-center gap-2 px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-slate-300 hover:text-white">
-                <Filter className="w-4 h-4" />
-                Filter
-              </button>
+              <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} aria-label="Filter projects by status" className="rounded-lg border border-blue-500/30 bg-[#050B18] px-3 py-2 text-slate-200">
+                <option>All</option><option>Published</option><option>Draft</option>
+              </select>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -207,14 +210,14 @@ export default function DashboardContent() {
                 </tr>
               </thead>
               <tbody>
-                {recentProjects.length === 0 && (
+                {filteredProjects.length === 0 && (
                   <tr>
                     <td colSpan={3} className="p-4 text-center text-slate-400 text-sm">
-                      No projects yet — add your first one.
+                      {recentProjects.length ? 'No projects match these filters.' : 'No projects yet — add your first one.'}
                     </td>
                   </tr>
                 )}
-                {recentProjects.map((project, index) => (
+                {filteredProjects.map((project, index) => (
                   <motion.tr
                     key={index}
                     initial={{ opacity: 0, x: -20 }}
@@ -288,12 +291,13 @@ export default function DashboardContent() {
               <Line type="monotone" dataKey="visitors" stroke="#38BDF8" strokeWidth={2} dot={{ fill: '#38BDF8', r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
+          {lineData.length === 0 && <p className="mt-2 text-center text-xs text-slate-500">Visitor data will appear as your portfolio receives visits.</p>}
         </motion.div>
 
         <motion.div variants={itemVariants} className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-2xl p-6">
           <h2 className="text-xl font-semibold text-white mb-4">Projects by Category</h2>
           <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
+            {pieData.length ? <PieChart>
               <Pie
                 data={pieData}
                 cx="50%"
@@ -315,7 +319,7 @@ export default function DashboardContent() {
                   color: '#fff'
                 }}
               />
-            </PieChart>
+            </PieChart> : <div className="flex h-[250px] items-center justify-center text-sm text-slate-500">Publish projects to see category totals.</div>}
           </ResponsiveContainer>
           <div className="flex justify-center gap-4 mt-4">
             {pieData.map((item, index) => (

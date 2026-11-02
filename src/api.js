@@ -27,6 +27,7 @@ export async function api(path, { method = 'GET', body, auth = false, signal } =
     response = await fetch(path, {
       method,
       headers,
+      cache: 'no-store',
       body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
       signal,
     })

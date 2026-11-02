@@ -3,15 +3,15 @@ import { Briefcase, Download, Mail, MapPin } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { api, isOfflineError } from '../api.js'
+import { SITE_CONTACT } from '../siteConfig.js'
 
 const DEFAULT_ABOUT = {
   name: 'Mugisha Prince',
   title: 'Software Developer',
   description:
     "I'm Mugisha Prince, a passionate software developer from Rwanda. I enjoy building web applications that solve real problems and make life easier.\n\nI'm currently learning and improving my skills in modern web technologies. I love turning ideas into real products and I'm always eager to learn something new.",
-  email: 'mugishaprince@gmail.com',
-  phone: '+250 788 123 456',
-  location: 'Kigali, Rwanda',
+  ...SITE_CONTACT,
+  cvUrl: '', githubUrl: '', linkedinUrl: '', twitterUrl: '',
 }
 
 const EXPERIENCE = '1+ year (learning & building)'
@@ -19,31 +19,42 @@ const EXPERIENCE = '1+ year (learning & building)'
 export default function AboutPage() {
   const [photoOk, setPhotoOk] = useState(true)
   const [about, setAbout] = useState(DEFAULT_ABOUT)
+  const [profileImage, setProfileImage] = useState('/passport-2.png')
 
   useEffect(() => {
     let cancelled = false
-    api('/api/about')
-      .then((data) => {
-        if (cancelled || !data) return
-        setAbout({
-          ...DEFAULT_ABOUT,
-          ...Object.fromEntries(
-            Object.entries({
-              name: data.name,
-              title: data.title,
-              description: data.description,
-              email: data.email,
-              phone: data.phone,
-              location: data.location,
-            }).filter(([, v]) => v && String(v).trim()),
-          ),
+    const load = () => {
+      api('/api/about')
+        .then((data) => {
+          if (cancelled || !data) return
+          setAbout({
+            ...DEFAULT_ABOUT,
+            ...Object.fromEntries(
+              Object.entries({
+                name: data.name,
+                title: data.title,
+                description: data.description,
+                email: data.email,
+                phone: data.phone,
+                location: data.location,
+                cvUrl: data.cvUrl, githubUrl: data.githubUrl,
+                linkedinUrl: data.linkedinUrl, twitterUrl: data.twitterUrl,
+              }).filter(([, v]) => v && String(v).trim()),
+            ),
+          })
         })
-      })
-      .catch((err) => {
-        if (!isOfflineError(err)) console.warn('About:', err.message)
-      })
+        .catch((err) => {
+          if (!isOfflineError(err)) console.warn('About:', err.message)
+        })
+    }
+    load()
+    window.addEventListener('focus', load)
+    api('/api/home').then((data) => {
+      if (!cancelled && data?.profileImage) setProfileImage(data.profileImage === '/mugisha-prince.png' ? '/passport-2.png' : data.profileImage)
+    }).catch(() => {})
     return () => {
       cancelled = true
+      window.removeEventListener('focus', load)
     }
   }, [])
 
@@ -92,16 +103,15 @@ export default function AboutPage() {
                 ))}
               </div>
 
-              {/* CV: enabled once a real file exists in /public, otherwise clearly disabled */}
-              {ABOUT_CV_URL ? (
-                <a href={ABOUT_CV_URL} download className="btn-primary">
+              {about.cvUrl ? (
+                <a href={about.cvUrl} target="_blank" rel="noreferrer" className="btn-primary">
                   <Download className="w-4 h-4" />
                   Download CV
                 </a>
               ) : (
                 <span
                   className="btn-primary opacity-50 cursor-not-allowed pointer-events-none"
-                  title="Add your CV to /public and set ABOUT_CV_URL to enable this"
+                  title="Add the CV file URL in Admin → About"
                   aria-disabled="true"
                 >
                   <Download className="w-4 h-4" />
@@ -117,7 +127,7 @@ export default function AboutPage() {
                 <div className="aspect-[4/5] relative">
                   {photoOk ? (
                     <img
-                      src="/mugisha-prince.png"
+                      src={profileImage}
                       alt={about.name || 'Mugisha Prince'}
                       className="absolute inset-0 w-full h-full object-cover"
                       onError={() => setPhotoOk(false)}
@@ -147,8 +157,3 @@ export default function AboutPage() {
   )
 }
 
-/**
- * Set this to a file placed in /public (e.g. '/mugisha-prince-cv.pdf')
- * and the Download CV button starts working.
- */
-const ABOUT_CV_URL = ''

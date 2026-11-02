@@ -6,57 +6,8 @@ import { api, isOfflineError, formatDate } from '../api.js'
 const FILTERS = ['All', 'Web Apps', 'Mobile Apps', 'Full Stack']
 
 const ACCENTS = ['#38bdf8', '#0ea5e9', '#0284c7', '#38bdf8']
-
-const DEFAULT_PROJECTS = [
-  {
-    id: 'school-management',
-    title: 'School Management System',
-    description: 'A complete system to manage students, teachers, classes, and subjects.',
-    category: 'Web Apps',
-    technologies: ['React', 'Node.js', 'MySQL'],
-    liveDemo: '#',
-    github: '#',
-    accent: '#38bdf8',
-    thumb: 'rows',
-  },
-  {
-    id: 'timetable-management',
-    title: 'Timetable Management System',
-    description: 'Manage class schedules, subjects and teachers with an interactive system.',
-    category: 'Web Apps',
-    technologies: ['React', 'Node.js', 'MySQL'],
-    liveDemo: '#',
-    github: '#',
-    accent: '#0ea5e9',
-    thumb: 'schedule',
-  },
-  {
-    id: 'portfolio-website',
-    title: 'Portfolio Website',
-    description: 'Personal portfolio website with admin panel.',
-    category: 'Full Stack',
-    technologies: ['React', 'Express', 'MongoDB'],
-    liveDemo: '#',
-    github: '#',
-    accent: '#0284c7',
-    thumb: 'profile',
-  },
-  {
-    id: 'task-management',
-    title: 'Task Management App',
-    description: 'A simple task manager with real-time updates.',
-    category: 'Web Apps',
-    technologies: ['React', 'Firebase'],
-    liveDemo: '#',
-    github: '#',
-    accent: '#38bdf8',
-    thumb: 'tasks',
-  },
-]
-
 /**
- * Map one API project onto the card shape used above. Keeps the static
- * list as a fallback when the backend is offline or empty.
+ * Map one API project onto the card shape used below.
  */
 function fromApi(project, index) {
   const title = String(project.title || '')
@@ -75,8 +26,8 @@ function fromApi(project, index) {
     description: project.description || '',
     category: project.category || 'Web Apps',
     technologies: Array.isArray(project.technologies) ? project.technologies : [],
-    liveDemo: project.liveDemoUrl || '#',
-    github: project.githubUrl || '#',
+    liveDemo: project.liveDemoUrl || '',
+    github: project.githubUrl || '',
     accent: ACCENTS[index % ACCENTS.length],
     thumb,
     image: project.image || '',
@@ -245,24 +196,26 @@ function ProjectLink({ href, className, children }) {
 
 export default function ProjectsPage() {
   const [activeFilter, setActiveFilter] = useState('All')
-  const [allProjects, setAllProjects] = useState(DEFAULT_PROJECTS)
+  const [allProjects, setAllProjects] = useState([])
 
   useEffect(() => {
     let cancelled = false
-    api('/api/projects')
-      .then((rows) => {
-        if (cancelled || !Array.isArray(rows)) return
-        const published = rows.filter((p) => (p.status || 'Published') === 'Published')
-        if (published.length) {
+    const load = () => {
+      api('/api/projects')
+        .then((rows) => {
+          if (cancelled || !Array.isArray(rows)) return
+          const published = rows.filter((p) => (p.status || 'Published') === 'Published')
           setAllProjects(published.map(fromApi))
-        }
-      })
-      .catch((err) => {
-        // Server offline → keep showing the built-in projects.
-        if (!isOfflineError(err)) console.warn('Projects:', err.message)
-      })
+        })
+        .catch((err) => {
+          if (!isOfflineError(err)) console.warn('Projects:', err.message)
+        })
+    }
+    load()
+    window.addEventListener('focus', load)
     return () => {
       cancelled = true
+      window.removeEventListener('focus', load)
     }
   }, [])
 
@@ -338,14 +291,14 @@ export default function ProjectsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      <ProjectLink href={project.liveDemo} className="btn-primary text-sm">
+                      {project.liveDemo && <ProjectLink href={project.liveDemo} className="btn-primary text-sm">
                         <ExternalLinkIcon />
                         Live Demo
-                      </ProjectLink>
-                      <ProjectLink href={project.github} className="btn-secondary text-sm">
+                      </ProjectLink>}
+                      {project.github && <ProjectLink href={project.github} className="btn-secondary text-sm">
                         <GithubIcon />
                         GitHub
-                      </ProjectLink>
+                      </ProjectLink>}
                     </div>
                   </div>
                 </article>

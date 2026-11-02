@@ -63,16 +63,21 @@ export default function SkillsPage() {
 
   useEffect(() => {
     let cancelled = false
-    api('/api/skills')
-      .then((rows) => {
-        if (cancelled || !Array.isArray(rows)) return
-        if (rows.length) setSkills(rows.map(decorate))
-      })
-      .catch((err) => {
-        if (!isOfflineError(err)) console.warn('Skills:', err.message)
-      })
+    const load = () => {
+      api('/api/skills')
+        .then((rows) => {
+          if (cancelled || !Array.isArray(rows)) return
+          setSkills(rows.map(decorate))
+        })
+        .catch((err) => {
+          if (!isOfflineError(err)) console.warn('Skills:', err.message)
+        })
+    }
+    load()
+    window.addEventListener('focus', load)
     return () => {
       cancelled = true
+      window.removeEventListener('focus', load)
     }
   }, [])
 

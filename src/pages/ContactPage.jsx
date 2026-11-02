@@ -4,18 +4,10 @@ import { FaGithub, FaLinkedinIn, FaTwitter } from 'react-icons/fa'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { api, isOfflineError } from '../api.js'
+import { SITE_CONTACT, SITE_SOCIALS } from '../siteConfig.js'
 
-const DEFAULTS = {
-  email: 'mugishaprince@gmail.com',
-  phone: '+250 788 123 456',
-  location: 'Kigali, Rwanda',
-}
-
-const SOCIALS = [
-  { name: 'GitHub', href: 'https://github.com/', Icon: FaGithub },
-  { name: 'LinkedIn', href: 'https://www.linkedin.com/', Icon: FaLinkedinIn },
-  { name: 'Twitter', href: 'https://twitter.com/', Icon: FaTwitter },
-]
+const DEFAULTS = SITE_CONTACT
+const ICONS = { github: FaGithub, linkedin: FaLinkedinIn, twitter: FaTwitter }
 
 const emptyForm = { name: '', email: '', message: '' }
 
@@ -25,6 +17,7 @@ export default function ContactPage() {
   const [status, setStatus] = useState('idle')
   const [statusText, setStatusText] = useState('')
   const [contact, setContact] = useState(DEFAULTS)
+  const [socialUrls, setSocialUrls] = useState({})
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -32,20 +25,26 @@ export default function ContactPage() {
 
   useEffect(() => {
     let cancelled = false
-    api('/api/about')
-      .then((data) => {
+    const load = () => {
+      api('/api/about')
+        .then((data) => {
         if (cancelled || !data) return
         setContact({
           email: data.email?.trim() || DEFAULTS.email,
           phone: data.phone?.trim() || DEFAULTS.phone,
           location: data.location?.trim() || DEFAULTS.location,
         })
-      })
-      .catch((err) => {
-        if (!isOfflineError(err)) console.warn('Contact info:', err.message)
-      })
+        setSocialUrls({ github: data.githubUrl || '', linkedin: data.linkedinUrl || '', twitter: data.twitterUrl || '' })
+        })
+        .catch((err) => {
+          if (!isOfflineError(err)) console.warn('Contact info:', err.message)
+        })
+    }
+    load()
+    window.addEventListener('focus', load)
     return () => {
       cancelled = true
+      window.removeEventListener('focus', load)
     }
   }, [])
 
@@ -100,8 +99,7 @@ export default function ContactPage() {
         )
         window.location.href = `mailto:${contact.email}?subject=${subject}&body=${body}`
         setStatus('sent')
-        setStatusText('Opening your email app so you can send the message.')
-        setForm(emptyForm)
+        setStatusText('Your email app should open with this message. The form stays filled until you choose to clear it.')
       } else {
         setStatus('error')
         setStatusText(err.message || 'Could not send your message. Please try again.')
@@ -128,10 +126,12 @@ export default function ContactPage() {
                 <ContactRow icon={MapPin} label="Location" value={contact.location} />
               </div>
 
-              <div>
+              {SITE_SOCIALS.some(({ href, icon }) => socialUrls[icon] || href) && <div>
                 <p className="text-white font-semibold mb-4">Follow Me</p>
                 <div className="flex items-center gap-3">
-                  {SOCIALS.map(({ name, href, Icon }) => (
+                  {SITE_SOCIALS.map((item) => ({ ...item, href: socialUrls[item.icon] || item.href })).filter(({ href }) => href).map(({ name, href, icon }) => {
+                    const Icon = ICONS[icon]
+                    return (
                     <a
                       key={name}
                       href={href}
@@ -142,9 +142,10 @@ export default function ContactPage() {
                     >
                       <Icon className="w-4 h-4" />
                     </a>
-                  ))}
+                    )
+                  })}
                 </div>
-              </div>
+              </div>}
             </div>
 
             <form
