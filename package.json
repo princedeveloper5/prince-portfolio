@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "server": "node server/server.cjs",
+    "db:backup": "node server/backup.cjs",
     "build": "vite build",
     "preview": "vite preview"
   },

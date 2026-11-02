@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Moon, Sun } from 'lucide-react'
 import Logo from './Logo'
+import { api } from '../api.js'
 
 const navLinks = [
   { name: 'Home', path: '/' },
@@ -15,11 +16,20 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const location = useLocation()
   const [theme, setTheme] = useState(() => window.localStorage?.getItem('theme') || 'dark')
+  const [brandName, setBrandName] = useState('Mugisha Prince')
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     window.localStorage?.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    let active = true
+    const load = () => api('/api/home').then((data) => { if (active && data?.name) setBrandName(data.name) }).catch(() => {})
+    load()
+    window.addEventListener('focus', load)
+    return () => { active = false; window.removeEventListener('focus', load) }
+  }, [])
 
   useEffect(() => {
     const closeOnEscape = (event) => {
@@ -39,7 +49,7 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-3">
             <Logo className="w-10 h-10" />
-            <span className="text-white font-semibold text-lg hidden sm:block">Mugisha Prince</span>
+            <span className="text-white font-semibold text-lg hidden sm:block">{brandName}</span>
           </Link>
 
           <div className="flex items-center gap-4">

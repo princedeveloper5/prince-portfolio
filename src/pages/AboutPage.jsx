@@ -24,9 +24,10 @@ export default function AboutPage() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      api('/api/about')
-        .then((data) => {
-          if (cancelled || !data) return
+      Promise.all([api('/api/about'), api('/api/home')])
+        .then(([data, home]) => {
+          if (cancelled) return
+          if (data) {
           setAbout({
             ...DEFAULT_ABOUT,
             ...Object.fromEntries(
@@ -42,6 +43,10 @@ export default function AboutPage() {
               }).filter(([, v]) => v && String(v).trim()),
             ),
           })
+          }
+          const image = data?.portraitImage || home?.profileImage || '/passport-2.png'
+          setProfileImage(image === '/mugisha-prince.png' ? '/passport-2.png' : image)
+          setPhotoOk(true)
         })
         .catch((err) => {
           if (!isOfflineError(err)) console.warn('About:', err.message)

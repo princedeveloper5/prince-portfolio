@@ -17,10 +17,14 @@ const links = [
 export default function Footer() {
   const [contact, setContact] = useState(SITE_CONTACT)
   const [socialUrls, setSocialUrls] = useState({})
+  const [profile, setProfile] = useState({ name: 'Mugisha Prince', title: 'Software Developer', description: 'Passionate about building modern web applications and solving real-world problems through technology.' })
 
   useEffect(() => {
     let cancelled = false
     const load = () => {
+      api('/api/home').then((data) => {
+        if (!cancelled && data) setProfile((current) => ({ name: data.name || current.name, title: data.title || current.title, description: data.description || current.description }))
+      }).catch(() => {})
       api('/api/about').then((data) => {
         if (!cancelled && data) setContact((current) => ({
           email: data.email?.trim() || current.email,
@@ -43,8 +47,8 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div>
-            <div className="flex items-center gap-3 mb-4"><Logo className="w-10 h-10" /><span className="text-white font-semibold text-lg">Mugisha Prince</span></div>
-            <p className="text-gray-400 text-sm leading-relaxed">Software Developer passionate about building modern web applications and solving real-world problems through technology.</p>
+            <div className="flex items-center gap-3 mb-4"><Logo className="w-10 h-10" /><span className="text-white font-semibold text-lg">{profile.name}</span></div>
+            <p className="text-gray-400 text-sm leading-relaxed">{profile.title} — {profile.description}</p>
           </div>
           <div>
             <h3 className="text-white font-semibold mb-4">Quick Links</h3>
@@ -64,7 +68,7 @@ export default function Footer() {
             </div>
           </div>
         </div>
-        <div className="border-t border-navy-600 mt-8 pt-8 text-center"><p className="text-gray-400 text-sm">© {new Date().getFullYear()} Mugisha Prince. All rights reserved.</p></div>
+        <div className="border-t border-navy-600 mt-8 pt-8 text-center"><p className="text-gray-400 text-sm">© {new Date().getFullYear()} {profile.name}. All rights reserved.</p></div>
       </div>
     </footer>
   )

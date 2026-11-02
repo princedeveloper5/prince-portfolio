@@ -79,7 +79,7 @@ export default function ContactPage() {
     setStatusText('')
 
     try {
-      await api('/api/messages', {
+      const result = await api('/api/messages', {
         method: 'POST',
         body: {
           name: form.name.trim(),
@@ -88,7 +88,9 @@ export default function ContactPage() {
         },
       })
       setStatus('sent')
-      setStatusText('Thanks! Your message has been sent — I will get back to you soon.')
+      setStatusText(result?.emailNotificationSent
+        ? 'Thanks! Your message was saved and an email notification was sent.'
+        : 'Thanks! Your message was saved to the portfolio inbox. Email notifications are not configured yet.')
       setForm(emptyForm)
     } catch (err) {
       if (isOfflineError(err) || err.status >= 500) {

@@ -10,11 +10,24 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+let JWT_SECRET = process.env.JWT_SECRET;
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
-if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
   throw new Error('JWT_SECRET must be configured in production.');
+}
+if (!JWT_SECRET) {
+  const secretPath = path.join(__dirname, '.dev-jwt-secret');
+  try {
+    JWT_SECRET = fs.readFileSync(secretPath, 'utf8').trim();
+  } catch {
+    const generated = crypto.randomBytes(48).toString('hex');
+    try { fs.writeFileSync(secretPath, generated, { encoding: 'utf8', flag: 'wx', mode: 0o600 }); } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    JWT_SECRET = fs.readFileSync(secretPath, 'utf8').trim();
+  }
 }
 
 const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
@@ -27,15 +40,18 @@ const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMT
   : null;
 
 // ---- Paths (always relative to THIS file, never to process.cwd()) ----
-const DB_PATH = path.join(__dirname, '..', 'portfolio.db');
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const DB_PATH = path.resolve(process.env.DATABASE_PATH || path.join(__dirname, '..', 'portfolio.db'));
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'));
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173')
   .split(',').map((origin) => origin.trim()).filter(Boolean));
 app.use(cors({ origin(origin, callback) {
   if (!origin || allowedOrigins.has(origin)) return callback(null, true);
-  return callback(new Error('This website origin is not allowed by the API.'));
+  const error = new Error('This website origin is not allowed by the API.');
+  error.status = 403;
+  return callback(error);
 } }));
 app.use(express.json({ limit: '50kb' }));
 app.use((req, res, next) => {
@@ -45,6 +61,7 @@ app.use((req, res, next) => {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   });
+  if (process.env.NODE_ENV === 'production') res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
 });
 app.use('/api', (req, res, next) => {
@@ -80,7 +97,7 @@ setInterval(() => {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
-    const safeExt = path.extname(file.originalname).toLowerCase() || '.png';
+    const safeExt = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' })[file.mimetype] || '.img';
     cb(null, `${Date.now()}-${Math.round(Math.random() * 1e6)}${safeExt}`);
   },
 });
@@ -88,8 +105,8 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Only image files are allowed'));
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.mimetype)) {
+      return cb(new Error('Use a PNG, JPEG, GIF, or WebP image. SVG files are not accepted.'));
     }
     cb(null, true);
   },
@@ -157,6 +174,12 @@ const homeToJson = (row) =>
         title: row.title || '',
         description: row.description || '',
         profileImage: uploadPath(row.profile_image),
+        aboutPreviewTitle: row.about_preview_title || '',
+        aboutPreviewText: row.about_preview_text || '',
+        contactCtaTitle: row.contact_cta_title || '',
+        contactCtaText: row.contact_cta_text || '',
+        metaTitle: row.meta_title || '',
+        metaDescription: row.meta_description || '',
       }
     : null;
 
@@ -170,6 +193,7 @@ const aboutToJson = (row) =>
         email: row.email || '',
         phone: row.phone || '',
         location: row.location || '',
+        portraitImage: uploadPath(row.portrait_image),
         cvUrl: row.cv_url || '',
         githubUrl: row.github_url || '',
         linkedinUrl: row.linkedin_url || '',
@@ -205,16 +229,32 @@ const removeUploadedFile = (fileName) => {
   fs.unlink(target, () => {});
 };
 
+function hasValidImageSignature(file) {
+  if (!file) return true;
+  const bytes = fs.readFileSync(file.path);
+  const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const gif = bytes.length >= 6 && ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString('ascii'));
+  const webp = bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  return png || jpeg || gif || webp;
+}
+
 // ---------- auth ----------
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Authentication required' });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await get('SELECT id, email, name, role FROM users WHERE id = ?', [decoded.id]);
+    if (!user) return res.status(401).json({ error: 'This account is no longer active. Please sign in again.' });
+    req.user = user;
     next();
-  } catch {
-    res.status(401).json({ error: 'Session expired, please log in again' });
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' || error.name === 'NotBeforeError') {
+      return res.status(401).json({ error: 'Session expired, please log in again' });
+    }
+    next(error);
   }
 }
 
@@ -261,7 +301,13 @@ db.serialize(() => {
     name TEXT,
     title TEXT,
     description TEXT,
-    profile_image TEXT
+    profile_image TEXT,
+    about_preview_title TEXT DEFAULT '',
+    about_preview_text TEXT DEFAULT '',
+    contact_cta_title TEXT DEFAULT '',
+    contact_cta_text TEXT DEFAULT '',
+    meta_title TEXT DEFAULT '',
+    meta_description TEXT DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS about_content (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,7 +320,8 @@ db.serialize(() => {
     cv_url TEXT DEFAULT '',
     github_url TEXT DEFAULT '',
     linkedin_url TEXT DEFAULT '',
-    twitter_url TEXT DEFAULT ''
+    twitter_url TEXT DEFAULT '',
+    portrait_image TEXT DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS visit_days (
     day TEXT PRIMARY KEY,
@@ -304,6 +351,19 @@ const seedIfEmpty = async (table, sql, rows) => {
 };
 
 const seedData = async () => {
+  const homeColumns = await all('PRAGMA table_info(home_content)');
+  const existingHomeColumns = new Set(homeColumns.map((column) => column.name));
+  for (const [column, definition] of [
+    ['about_preview_title', "TEXT DEFAULT ''"],
+    ['about_preview_text', "TEXT DEFAULT ''"],
+    ['contact_cta_title', "TEXT DEFAULT ''"],
+    ['contact_cta_text', "TEXT DEFAULT ''"],
+    ['meta_title', "TEXT DEFAULT ''"],
+    ['meta_description', "TEXT DEFAULT ''"],
+  ]) {
+    if (!existingHomeColumns.has(column)) await run(`ALTER TABLE home_content ADD COLUMN ${column} ${definition}`);
+  }
+
   const aboutColumns = await all('PRAGMA table_info(about_content)');
   const existingAboutColumns = new Set(aboutColumns.map((column) => column.name));
   for (const [column, definition] of [
@@ -311,6 +371,7 @@ const seedData = async () => {
     ['github_url', "TEXT DEFAULT ''"],
     ['linkedin_url', "TEXT DEFAULT ''"],
     ['twitter_url', "TEXT DEFAULT ''"],
+    ['portrait_image', "TEXT DEFAULT ''"],
   ]) {
     if (!existingAboutColumns.has(column)) {
       await run(`ALTER TABLE about_content ADD COLUMN ${column} ${definition}`);
@@ -370,13 +431,19 @@ const seedData = async () => {
 
   await seedIfEmpty(
     'home_content',
-    'INSERT INTO home_content (greeting, name, title, description, profile_image) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO home_content (greeting, name, title, description, profile_image, about_preview_title, about_preview_text, contact_cta_title, contact_cta_text, meta_title, meta_description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [[
       "Hello, I'm",
       'Mugisha Prince',
       'Software Developer',
       'I build modern web applications and solve real problems with clean, efficient code. Passionate about learning, creating and growing in the tech industry.',
       '/mugisha-prince.png',
+      'Driven by Curiosity. Built Through Code.',
+      'I enjoy turning ideas into useful, user-friendly software and continue to grow by learning and building real projects.',
+      "Have an idea? Let's build something useful.",
+      "I'm open to discussing projects, creative ideas, and opportunities to collaborate.",
+      'Mugisha Prince | Software Developer',
+      'Mugisha Prince is a software developer building modern web applications and useful digital products.',
     ]],
   );
 
@@ -399,7 +466,7 @@ const seedData = async () => {
 const startupReady = seedData();
 
 // ---------- auth routes ----------
-app.post('/api/login', asyncRoute(async (req, res) => {
+app.post('/api/login', limitRequests({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many login attempts. Try again in 15 minutes.' }), asyncRoute(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
@@ -416,7 +483,7 @@ app.post('/api/login', asyncRoute(async (req, res) => {
   res.json({ token, user: userToJson(user) });
 }));
 
-app.post('/api/password-reset/request', asyncRoute(async (req, res) => {
+app.post('/api/password-reset/request', limitRequests({ windowMs: 15 * 60 * 1000, max: 5, message: 'Too many reset requests. Try again later.' }), asyncRoute(async (req, res) => {
   const email = String(req.body?.email || '').toLowerCase().trim();
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
   if (!mailer) return res.status(503).json({ error: 'Password reset email is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS on the server.' });
@@ -444,10 +511,10 @@ app.post('/api/password-reset/request', asyncRoute(async (req, res) => {
   res.json({ success: true, message: 'If the account exists, a password reset link has been sent.' });
 }));
 
-app.post('/api/password-reset/complete', asyncRoute(async (req, res) => {
+app.post('/api/password-reset/complete', limitRequests({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many reset attempts. Try again later.' }), asyncRoute(async (req, res) => {
   const token = String(req.body?.token || '');
   const password = String(req.body?.password || '');
-  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  if (password.length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters' });
   if (!/^[a-f0-9]{64}$/i.test(token)) return res.status(400).json({ error: 'This reset link is invalid or expired' });
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const reset = await get('SELECT user_id FROM password_reset_tokens WHERE token_hash = ? AND expires_at > ?', [tokenHash, Date.now()]);
@@ -458,15 +525,42 @@ app.post('/api/password-reset/complete', asyncRoute(async (req, res) => {
 }));
 
 // ---------- projects ----------
-app.get('/api/projects', asyncRoute(async (req, res) => {
-  const rows = await all('SELECT * FROM projects ORDER BY created_at DESC, id DESC');
+async function optionalAuth(req, res, next) {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Bearer ')) return next();
+  try {
+    const decoded = jwt.verify(header.slice(7), JWT_SECRET);
+    req.user = await get('SELECT id, email, name, role FROM users WHERE id = ?', [decoded.id]);
+    if (!req.user) return res.status(401).json({ error: 'Session expired, please log in again' });
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Session expired, please log in again' });
+  }
+}
+
+app.get('/api/projects', optionalAuth, asyncRoute(async (req, res) => {
+  const rows = req.user
+    ? await all('SELECT * FROM projects ORDER BY created_at DESC, id DESC')
+    : await all("SELECT * FROM projects WHERE status = 'Published' ORDER BY created_at DESC, id DESC");
   res.json(rows.map(projectToJson));
+}));
+
+app.get('/api/public/stats', asyncRoute(async (req, res) => {
+  const [projects, skills, visits] = await Promise.all([
+    get("SELECT COUNT(*) AS n FROM projects WHERE status = 'Published'"),
+    get('SELECT COUNT(*) AS n FROM skills'),
+    get("SELECT value FROM counters WHERE key = 'visits'"),
+  ]);
+  res.json({ publishedProjects: projects.n, totalSkills: skills.n, totalVisits: visits?.value || 0 });
 }));
 
 app.post('/api/projects', requireAuth, upload.any(), asyncRoute(async (req, res) => {
   const file = findUploadedFile(req);
+  if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
   const { title, description, technologies, liveDemoUrl, githubUrl, category, status } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'Project title is required' });
+  if (String(title).length > 180 || String(description || '').length > 10000) return res.status(400).json({ error: 'Project title or description is too long.' });
+  if (!isHttpUrl(liveDemoUrl) || !isHttpUrl(githubUrl)) return res.status(400).json({ error: 'Project links must use a valid HTTP or HTTPS URL.' });
 
   const info = await run(
     `INSERT INTO projects (title, description, technologies, image_path, live_demo_url, github_url, category, status)
@@ -488,10 +582,13 @@ app.post('/api/projects', requireAuth, upload.any(), asyncRoute(async (req, res)
 
 app.put('/api/projects/:id', requireAuth, upload.any(), asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
-  if (!existing) return res.status(404).json({ error: 'Project not found' });
-
   const file = findUploadedFile(req);
+  if (!existing) { if (file) removeUploadedFile(file.filename); return res.status(404).json({ error: 'Project not found' }); }
+
+  if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
   const b = req.body || {};
+  if (String(b.title ?? existing.title).length > 180 || String(b.description ?? existing.description).length > 10000) return res.status(400).json({ error: 'Project title or description is too long.' });
+  if (!isHttpUrl(b.liveDemoUrl ?? existing.live_demo_url) || !isHttpUrl(b.githubUrl ?? existing.github_url)) return res.status(400).json({ error: 'Project links must use a valid HTTP or HTTPS URL.' });
   const imagePath = file ? file.filename : (b.image !== undefined ? b.image : existing.image_path);
   await run(
     `UPDATE projects SET title = ?, description = ?, technologies = ?, image_path = ?,
@@ -530,6 +627,7 @@ app.get('/api/skills', asyncRoute(async (req, res) => {
 app.post('/api/skills', requireAuth, asyncRoute(async (req, res) => {
   const { name, category, level } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Skill name is required' });
+  if (String(name).length > 80 || String(category || '').length > 80) return res.status(400).json({ error: 'Skill name or category is too long.' });
   const info = await run('INSERT INTO skills (name, category, level) VALUES (?, ?, ?)', [
     String(name).trim(),
     category || 'Tools',
@@ -543,6 +641,7 @@ app.put('/api/skills/:id', requireAuth, asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM skills WHERE id = ?', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Skill not found' });
   const b = req.body || {};
+  if (String(b.name ?? existing.name).length > 80 || String(b.category ?? existing.category).length > 80) return res.status(400).json({ error: 'Skill name or category is too long.' });
   await run('UPDATE skills SET name = ?, category = ?, level = ? WHERE id = ?', [
     b.name !== undefined && String(b.name).trim() ? String(b.name).trim() : existing.name,
     b.category !== undefined ? b.category : existing.category,
@@ -569,18 +668,27 @@ app.get('/api/home', asyncRoute(async (req, res) => {
 app.put('/api/home', requireAuth, upload.any(), asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM home_content ORDER BY id ASC LIMIT 1');
   const file = findUploadedFile(req);
+  if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
   const b = req.body || {};
   const profileImage = file ? file.filename : (b.profileImage !== undefined ? b.profileImage : (existing ? existing.profile_image : ''));
 
   if (existing) {
     await run(
-      'UPDATE home_content SET greeting = ?, name = ?, title = ?, description = ?, profile_image = ? WHERE id = ?',
+      `UPDATE home_content SET greeting = ?, name = ?, title = ?, description = ?, profile_image = ?,
+       about_preview_title = ?, about_preview_text = ?, contact_cta_title = ?, contact_cta_text = ?,
+       meta_title = ?, meta_description = ? WHERE id = ?`,
       [
         b.greeting !== undefined ? b.greeting : existing.greeting,
         b.name !== undefined ? b.name : existing.name,
         b.title !== undefined ? b.title : existing.title,
         b.description !== undefined ? b.description : existing.description,
         profileImage,
+        b.aboutPreviewTitle !== undefined ? b.aboutPreviewTitle : existing.about_preview_title,
+        b.aboutPreviewText !== undefined ? b.aboutPreviewText : existing.about_preview_text,
+        b.contactCtaTitle !== undefined ? b.contactCtaTitle : existing.contact_cta_title,
+        b.contactCtaText !== undefined ? b.contactCtaText : existing.contact_cta_text,
+        b.metaTitle !== undefined ? b.metaTitle : existing.meta_title,
+        b.metaDescription !== undefined ? b.metaDescription : existing.meta_description,
         existing.id,
       ],
     );
@@ -590,8 +698,9 @@ app.put('/api/home', requireAuth, upload.any(), asyncRoute(async (req, res) => {
   }
 
   const info = await run(
-    'INSERT INTO home_content (greeting, name, title, description, profile_image) VALUES (?, ?, ?, ?, ?)',
-    [b.greeting || '', b.name || '', b.title || '', b.description || '', profileImage],
+    `INSERT INTO home_content (greeting, name, title, description, profile_image, about_preview_title, about_preview_text, contact_cta_title, contact_cta_text, meta_title, meta_description)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.greeting || '', b.name || '', b.title || '', b.description || '', profileImage, b.aboutPreviewTitle || '', b.aboutPreviewText || '', b.contactCtaTitle || '', b.contactCtaText || '', b.metaTitle || '', b.metaDescription || ''],
   );
   const row = await get('SELECT * FROM home_content WHERE id = ?', [info.lastID]);
   res.status(201).json(homeToJson(row));
@@ -603,14 +712,20 @@ app.get('/api/about', asyncRoute(async (req, res) => {
   res.json(aboutToJson(row));
 }));
 
-app.put('/api/about', requireAuth, asyncRoute(async (req, res) => {
+app.put('/api/about', requireAuth, upload.any(), asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM about_content ORDER BY id ASC LIMIT 1');
   const b = req.body || {};
+  const file = findUploadedFile(req);
+  if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
+  for (const field of ['cvUrl', 'githubUrl', 'linkedinUrl', 'twitterUrl']) {
+    if (b[field] !== undefined && (!isHttpUrl(b[field]) || String(b[field]).length > 2048)) return res.status(400).json({ error: `${field} must be a valid HTTP or HTTPS URL.` });
+  }
+  if (String(b.name ?? '').length > 120 || String(b.title ?? '').length > 160 || String(b.description ?? '').length > 12000) return res.status(400).json({ error: 'About content is too long.' });
 
   if (existing) {
     await run(
       `UPDATE about_content SET name = ?, title = ?, description = ?, email = ?, phone = ?, location = ?,
-       cv_url = ?, github_url = ?, linkedin_url = ?, twitter_url = ? WHERE id = ?`,
+       cv_url = ?, github_url = ?, linkedin_url = ?, twitter_url = ?, portrait_image = ? WHERE id = ?`,
       [
         b.name !== undefined ? b.name : existing.name,
         b.title !== undefined ? b.title : existing.title,
@@ -622,17 +737,19 @@ app.put('/api/about', requireAuth, asyncRoute(async (req, res) => {
         b.githubUrl !== undefined ? b.githubUrl : existing.github_url,
         b.linkedinUrl !== undefined ? b.linkedinUrl : existing.linkedin_url,
         b.twitterUrl !== undefined ? b.twitterUrl : existing.twitter_url,
+        file ? file.filename : (b.portraitImage !== undefined ? b.portraitImage : existing.portrait_image),
         existing.id,
       ],
     );
+    if (file && existing.portrait_image) removeUploadedFile(existing.portrait_image);
     const row = await get('SELECT * FROM about_content WHERE id = ?', [existing.id]);
     return res.json(aboutToJson(row));
   }
 
   const info = await run(
-    `INSERT INTO about_content (name, title, description, email, phone, location, cv_url, github_url, linkedin_url, twitter_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.name || '', b.title || '', b.description || '', b.email || '', b.phone || '', b.location || '', b.cvUrl || '', b.githubUrl || '', b.linkedinUrl || '', b.twitterUrl || ''],
+    `INSERT INTO about_content (name, title, description, email, phone, location, cv_url, github_url, linkedin_url, twitter_url, portrait_image)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.name || '', b.title || '', b.description || '', b.email || '', b.phone || '', b.location || '', b.cvUrl || '', b.githubUrl || '', b.linkedinUrl || '', b.twitterUrl || '', file ? file.filename : (b.portraitImage || '')],
   );
   const row = await get('SELECT * FROM about_content WHERE id = ?', [info.lastID]);
   res.status(201).json(aboutToJson(row));
@@ -640,19 +757,41 @@ app.put('/api/about', requireAuth, asyncRoute(async (req, res) => {
 
 // ---------- messages (POST is public — it's the contact form) ----------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isHttpUrl = (value) => {
+  if (!value) return true;
+  try { return ['http:', 'https:'].includes(new URL(String(value)).protocol); } catch { return false; }
+};
 
-app.post('/api/messages', asyncRoute(async (req, res) => {
+app.post('/api/messages', limitRequests({ windowMs: 15 * 60 * 1000, max: 6, message: 'Too many messages from this connection. Please try again later.' }), asyncRoute(async (req, res) => {
   const { name, email, message, subject } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
   if (!email || !EMAIL_RE.test(String(email).trim())) return res.status(400).json({ error: 'A valid email is required' });
   if (!message || !String(message).trim()) return res.status(400).json({ error: 'Message is required' });
+  if (String(name).length > 120 || String(email).length > 254 || String(message).length > 10000 || String(subject || '').length > 200) {
+    return res.status(400).json({ error: 'One or more message fields are too long.' });
+  }
 
   const info = await run(
     'INSERT INTO messages (name, email, subject, message, read) VALUES (?, ?, ?, ?, 0)',
     [String(name).trim(), String(email).trim(), subject ? String(subject).trim() : null, String(message).trim()],
   );
   const row = await get('SELECT * FROM messages WHERE id = ?', [info.lastID]);
-  res.status(201).json(messageToJson(row));
+  let emailNotificationSent = false;
+  if (mailer && process.env.CONTACT_TO) {
+    try {
+      await mailer.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: process.env.CONTACT_TO,
+        replyTo: String(email).trim(),
+        subject: `Portfolio message: ${String(subject || 'New inquiry').trim()}`,
+        text: `From: ${String(name).trim()} <${String(email).trim()}>\n\n${String(message).trim()}`,
+      });
+      emailNotificationSent = true;
+    } catch (error) {
+      console.error('[mail] message notification failed:', error.message);
+    }
+  }
+  res.status(201).json({ ...messageToJson(row), emailNotificationSent });
 }));
 
 app.get('/api/messages', requireAuth, asyncRoute(async (req, res) => {
@@ -686,7 +825,7 @@ app.post('/api/users', requireAuth, requireAdmin, asyncRoute(async (req, res) =>
   const { name, email, password, role } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
   if (!email || !EMAIL_RE.test(String(email).trim())) return res.status(400).json({ error: 'A valid email is required' });
-  if (!password || String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (!password || String(password).length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters' });
 
   const cleanEmail = String(email).toLowerCase().trim();
   const clash = await get('SELECT id FROM users WHERE email = ?', [cleanEmail]);
@@ -718,8 +857,8 @@ app.delete('/api/users/:id', requireAuth, requireAdmin, asyncRoute(async (req, r
 
 app.post('/api/change-password', requireAuth, asyncRoute(async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
-  if (!newPassword || String(newPassword).length < 6) {
-    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  if (!newPassword || String(newPassword).length < 12) {
+    return res.status(400).json({ error: 'New password must be at least 12 characters' });
   }
   const user = await get('SELECT * FROM users WHERE id = ?', [req.user.id]);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -797,11 +936,12 @@ app.post('/api/visit', asyncRoute(async (req, res) => {
 }));
 
 // ---------- health ----------
-app.get('/api/health', (req, res) => res.json({ ok: true, db: DB_PATH }));
+app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 app.use((err, req, res, next) => {
   console.error('[error]', err.message);
-  res.status(500).json({ error: err.message || 'Server error' });
+  const status = Number(err.status || err.statusCode) || (err instanceof multer.MulterError ? 400 : 500);
+  res.status(status).json({ error: status >= 500 ? 'Server error. Please try again later.' : err.message || 'Invalid request.' });
 });
 
 startupReady

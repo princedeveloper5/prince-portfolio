@@ -1,0 +1,1 @@
+const i={email:"mugishaprince@gmail.com",phone:"+250 788 123 456",location:"Kigali, Rwanda"},n=[{name:"GitHub",href:"",icon:"github"},{name:"LinkedIn",href:"",icon:"linkedin"},{name:"Twitter",href:"",icon:"twitter"}];export{i as S,n as a};

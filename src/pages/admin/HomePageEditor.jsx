@@ -9,7 +9,13 @@ const DEFAULTS = {
   name: 'Mugisha Prince',
   title: 'Software Developer',
   description: 'I build modern web applications and solve real problems with clean, efficient code. Passionate about learning, creating and growing in the tech industry.',
-  profileImage: '/mugisha-prince.png',
+  profileImage: '/passport-2.png',
+  aboutPreviewTitle: 'Driven by Curiosity. Built Through Code.',
+  aboutPreviewText: 'I enjoy turning ideas into useful, user-friendly software and continue to grow by learning and building real projects.',
+  contactCtaTitle: "Have an idea? Let's build something useful.",
+  contactCtaText: "I'm open to discussing projects, creative ideas, and opportunities to collaborate.",
+  metaTitle: 'Mugisha Prince | Software Developer',
+  metaDescription: 'Mugisha Prince is a software developer building modern web applications and useful digital products.',
 }
 
 export default function HomePageEditor() {
@@ -31,6 +37,12 @@ export default function HomePageEditor() {
           title: data.title || DEFAULTS.title,
           description: data.description || DEFAULTS.description,
           profileImage: data.profileImage || DEFAULTS.profileImage,
+          aboutPreviewTitle: data.aboutPreviewTitle || DEFAULTS.aboutPreviewTitle,
+          aboutPreviewText: data.aboutPreviewText || DEFAULTS.aboutPreviewText,
+          contactCtaTitle: data.contactCtaTitle || DEFAULTS.contactCtaTitle,
+          contactCtaText: data.contactCtaText || DEFAULTS.contactCtaText,
+          metaTitle: data.metaTitle || DEFAULTS.metaTitle,
+          metaDescription: data.metaDescription || DEFAULTS.metaDescription,
         }
         setHeroData(next)
         setImagePreview(next.profileImage)
@@ -66,6 +78,7 @@ export default function HomePageEditor() {
       body.append('name', heroData.name)
       body.append('title', heroData.title)
       body.append('description', heroData.description)
+      for (const field of ['aboutPreviewTitle', 'aboutPreviewText', 'contactCtaTitle', 'contactCtaText', 'metaTitle', 'metaDescription']) body.append(field, heroData[field])
       if (selectedFile) {
         body.append('image', selectedFile)
       } else {
@@ -229,6 +242,20 @@ export default function HomePageEditor() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-xl overflow-hidden">
+          <div className="border-b border-blue-500/20 p-4"><h2 className="text-lg font-semibold text-white">Homepage sections and search preview</h2><p className="mt-1 text-xs text-slate-400">These texts and search metadata are saved with the homepage.</p></div>
+          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+            {[
+              ['aboutPreviewTitle', 'About preview heading', false], ['aboutPreviewText', 'About preview text', true],
+              ['contactCtaTitle', 'Contact callout heading', false], ['contactCtaText', 'Contact callout text', true],
+              ['metaTitle', 'Browser and search title', false], ['metaDescription', 'Search description', true],
+            ].map(([field, label, multiline]) => <label key={field} className="block text-xs font-medium text-slate-300">{label}
+              {editing ? (multiline ? <textarea rows={3} value={heroData[field]} onChange={(event) => setHeroData({ ...heroData, [field]: event.target.value })} className="mt-1 w-full rounded-lg border border-blue-500/30 bg-[#050B18] px-3 py-2 text-sm text-white" /> : <input value={heroData[field]} onChange={(event) => setHeroData({ ...heroData, [field]: event.target.value })} className="mt-1 w-full rounded-lg border border-blue-500/30 bg-[#050B18] px-3 py-2 text-sm text-white" />) : <span className="mt-1 block whitespace-pre-line text-sm text-white">{heroData[field]}</span>}
+            </label>)}
+            {editing && <div className="md:col-span-2"><button onClick={handleSave} disabled={saving} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save homepage'}</button></div>}
           </div>
         </div>
       </div>

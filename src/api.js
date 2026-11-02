@@ -96,7 +96,9 @@ export function trackVisit() {
   try {
     if (window.sessionStorage?.getItem('visit_tracked')) return
     window.sessionStorage.setItem('visit_tracked', '1')
-    fetch('/api/visit', { method: 'POST' }).catch(() => {})
+    fetch('/api/visit', { method: 'POST' })
+      .then((response) => { if (!response.ok) window.sessionStorage.removeItem('visit_tracked') })
+      .catch(() => window.sessionStorage.removeItem('visit_tracked'))
   } catch {
     /* storage unavailable — skip counting */
   }

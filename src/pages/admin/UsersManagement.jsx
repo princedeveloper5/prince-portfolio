@@ -43,7 +43,7 @@ export default function UsersManagement() {
     setFormError('')
     if (!formData.name.trim()) return setFormError('Name is required')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) return setFormError('A valid email is required')
-    if (formData.password.length < 6) return setFormError('Password must be at least 6 characters')
+    if (formData.password.length < 12) return setFormError('Password must be at least 12 characters')
 
     setSaving(true)
     try {

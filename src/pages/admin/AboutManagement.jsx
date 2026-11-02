@@ -16,6 +16,8 @@ const DEFAULTS = {
 export default function AboutManagement() {
   const [editing, setEditing] = useState(false)
   const [aboutData, setAboutData] = useState(DEFAULTS)
+  const [selectedPortrait, setSelectedPortrait] = useState(null)
+  const [portraitPreview, setPortraitPreview] = useState('')
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
 
@@ -32,7 +34,9 @@ export default function AboutManagement() {
           location: data.location || DEFAULTS.location,
           cvUrl: data.cvUrl || '', githubUrl: data.githubUrl || '',
           linkedinUrl: data.linkedinUrl || '', twitterUrl: data.twitterUrl || '',
+          portraitImage: data.portraitImage || '',
         })
+        setPortraitPreview(data.portraitImage || '')
       })
       .catch((err) => setStatus(`⚠ ${err.message}`))
 
@@ -43,6 +47,7 @@ export default function AboutManagement() {
 
   const handleCancel = async () => {
     setEditing(false)
+    setSelectedPortrait(null)
     setStatus('Changes discarded.')
     await load()
   }
@@ -51,8 +56,13 @@ export default function AboutManagement() {
     setSaving(true)
     setStatus('')
     try {
-      const updated = await api('/api/about', { method: 'PUT', auth: true, body: aboutData })
+      const body = new FormData()
+      Object.entries(aboutData).forEach(([key, value]) => body.append(key, value || ''))
+      if (selectedPortrait) body.append('image', selectedPortrait)
+      const updated = await api('/api/about', { method: 'PUT', auth: true, body })
       if (updated) setAboutData(prev => ({ ...prev, ...updated }))
+      if (updated?.portraitImage) setPortraitPreview(updated.portraitImage)
+      setSelectedPortrait(null)
       setEditing(false)
       setStatus('✓ Saved — the public About page now shows this.')
     } catch (err) {
@@ -64,6 +74,15 @@ export default function AboutManagement() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handlePortrait = (file) => {
+    if (!file) return
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') return setStatus('✗ Choose a PNG, JPEG, GIF, or WebP image.')
+    if (file.size > 5 * 1024 * 1024) return setStatus('✗ Image size must be less than 5MB.')
+    setSelectedPortrait(file)
+    setPortraitPreview(URL.createObjectURL(file))
+    setStatus('')
   }
 
   return (
@@ -106,6 +125,10 @@ export default function AboutManagement() {
             className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-2xl p-6"
           >
             <h2 className="text-xl font-semibold text-white mb-4">Personal Information</h2>
+            <div className="mb-5 flex items-center gap-4">
+              <img src={portraitPreview || '/passport-2.png'} alt="About page portrait preview" onError={(event) => { event.currentTarget.src = '/passport-2.png' }} className="h-24 w-24 rounded-xl border border-blue-500/30 object-cover" />
+              <div><p className="text-sm font-medium text-white">About page portrait</p><p className="mb-2 text-xs text-slate-400">Set independently from the homepage profile image.</p>{editing && <label className="inline-flex cursor-pointer rounded-lg border border-blue-500/30 px-3 py-2 text-xs text-cyan-300 hover:bg-blue-500/10">Choose image<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="sr-only" onChange={(event) => handlePortrait(event.target.files?.[0])} /></label>}</div>
+            </div>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Full Name</label>

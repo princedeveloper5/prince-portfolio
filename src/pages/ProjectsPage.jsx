@@ -197,10 +197,14 @@ function ProjectLink({ href, className, children }) {
 export default function ProjectsPage() {
   const [activeFilter, setActiveFilter] = useState('All')
   const [allProjects, setAllProjects] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     let cancelled = false
     const load = () => {
+      setLoading(true)
+      setLoadError('')
       api('/api/projects')
         .then((rows) => {
           if (cancelled || !Array.isArray(rows)) return
@@ -208,8 +212,9 @@ export default function ProjectsPage() {
           setAllProjects(published.map(fromApi))
         })
         .catch((err) => {
-          if (!isOfflineError(err)) console.warn('Projects:', err.message)
+          if (!cancelled) setLoadError(isOfflineError(err) ? 'Projects are temporarily unavailable. Please try again.' : err.message)
         })
+        .finally(() => { if (!cancelled) setLoading(false) })
     }
     load()
     window.addEventListener('focus', load)
@@ -253,7 +258,11 @@ export default function ProjectsPage() {
             ))}
           </div>
 
-          {projects.length === 0 ? (
+          {loading ? <p className="py-16 text-center text-gray-400">Loading published projects…</p> : loadError ? (
+            <div role="alert" className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-6 py-12 text-center text-amber-200">
+              <p>{loadError}</p><button type="button" onClick={() => { setLoading(true); setLoadError(''); api('/api/projects').then((rows) => setAllProjects(Array.isArray(rows) ? rows.filter((p) => p.status === 'Published').map(fromApi) : [])).catch((err) => setLoadError(err.message)).finally(() => setLoading(false)) }} className="mt-3 underline">Try again</button>
+            </div>
+          ) : projects.length === 0 ? (
             <div className="border border-dashed border-navy-600 rounded-xl py-16 px-6 text-center">
               <span className="inline-flex items-center justify-center w-14 h-14 bg-electric-400/10 text-electric-400 rounded-2xl mb-4">
                 <FolderIcon />

@@ -27,12 +27,6 @@ const LOOKUP = {
   figma: { Icon: null, label: 'Fg', color: '#F24E1E', url: 'https://www.figma.com/', description: 'UI/UX Design' },
 }
 
-const DEFAULT_SKILLS = Object.entries(LOOKUP).map(([key, meta], index) => ({
-  id: index + 1,
-  name: key,
-  ...meta,
-}))
-
 const initials = (name) =>
   String(name)
     .split(/\s+/)
@@ -55,7 +49,8 @@ function decorate(skill) {
 }
 
 export default function SkillsPage() {
-  const [skills, setSkills] = useState(() => DEFAULT_SKILLS.map(decorate))
+  const [skills, setSkills] = useState([])
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -64,13 +59,14 @@ export default function SkillsPage() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
+      setLoadError('')
       api('/api/skills')
         .then((rows) => {
           if (cancelled || !Array.isArray(rows)) return
           setSkills(rows.map(decorate))
         })
         .catch((err) => {
-          if (!isOfflineError(err)) console.warn('Skills:', err.message)
+          if (!cancelled) setLoadError(isOfflineError(err) ? 'Skills are temporarily unavailable. Please try again.' : err.message)
         })
     }
     load()
@@ -92,6 +88,8 @@ export default function SkillsPage() {
           </div>
 
           <div className="bg-navy-900/60 border border-electric-400/30 rounded-2xl p-6 md:p-8 lg:p-10 shadow-[0_0_80px_rgba(56,189,248,0.08)]">
+            {loadError && <div role="alert" className="mb-5 rounded-lg border border-amber-400/30 bg-amber-400/5 p-4 text-center text-amber-200"><p>{loadError}</p><button onClick={() => api('/api/skills').then((rows) => { if (Array.isArray(rows)) { setSkills(rows.map(decorate)); setLoadError('') } }).catch((err) => setLoadError(err.message))} className="mt-2 underline">Try again</button></div>}
+            {!loadError && skills.length === 0 && <p className="py-10 text-center text-gray-400">No skills have been added yet.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
               {skills.map((skill) => {
                 const Icon = skill.Icon

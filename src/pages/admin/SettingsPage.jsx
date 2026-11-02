@@ -41,7 +41,7 @@ export default function SettingsPage() {
     e.preventDefault()
     setPwError('')
     if (!pw.currentPassword) return setPwError('Enter your current password')
-    if (pw.newPassword.length < 6) return setPwError('New password must be at least 6 characters')
+    if (pw.newPassword.length < 12) return setPwError('New password must be at least 12 characters')
     if (pw.newPassword !== pw.confirmPassword) return setPwError('New passwords do not match')
 
     setSavingPw(true)
@@ -211,6 +211,7 @@ export default function SettingsPage() {
                   <label className="block text-xs font-medium mb-1 text-white">New Password</label>
                   <input
                     type="password"
+                    minLength={12}
                     value={pw.newPassword}
                     onChange={(e) => setPw({ ...pw, newPassword: e.target.value })}
                     autoComplete="new-password"
@@ -221,6 +222,7 @@ export default function SettingsPage() {
                   <label className="block text-xs font-medium mb-1 text-white">Confirm New Password</label>
                   <input
                     type="password"
+                    minLength={12}
                     value={pw.confirmPassword}
                     onChange={(e) => setPw({ ...pw, confirmPassword: e.target.value })}
                     autoComplete="new-password"

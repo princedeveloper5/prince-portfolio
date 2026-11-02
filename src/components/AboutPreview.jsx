@@ -1,21 +1,29 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { api } from '../api.js'
+
+const DEFAULTS = {
+  aboutPreviewTitle: 'Driven by Curiosity. Built Through Code.',
+  aboutPreviewText: 'I enjoy turning ideas into useful, user-friendly software and continue to grow by learning and building real projects.',
+}
 
 export default function AboutPreview() {
+  const [content, setContent] = useState(DEFAULTS)
+  useEffect(() => {
+    let active = true
+    const load = () => api('/api/home').then((data) => {
+      if (active && data) setContent({ aboutPreviewTitle: data.aboutPreviewTitle || DEFAULTS.aboutPreviewTitle, aboutPreviewText: data.aboutPreviewText || DEFAULTS.aboutPreviewText })
+    }).catch(() => {})
+    load()
+    window.addEventListener('focus', load)
+    return () => { active = false; window.removeEventListener('focus', load) }
+  }, [])
   return (
-    <section className="py-20 bg-navy-900/50">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-          Driven by Curiosity. <span className="text-electric-400">Built Through Code.</span>
-        </h2>
-        <p className="text-gray-400 text-lg leading-relaxed mb-8 max-w-3xl mx-auto">
-          I'm developing my software engineering skills by learning modern technologies and building practical
-          software projects. I enjoy turning ideas into functional, user-friendly applications that solve
-          real-world problems.
-        </p>
-        <Link to="/about" className="btn-secondary">
-          More About Me
-          <span>→</span>
-        </Link>
+    <section className="bg-navy-900/50 py-20">
+      <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+        <h2 className="mb-6 text-3xl font-bold text-white md:text-4xl">{content.aboutPreviewTitle}</h2>
+        <p className="mx-auto mb-8 max-w-3xl whitespace-pre-line text-lg leading-relaxed text-gray-400">{content.aboutPreviewText}</p>
+        <Link to="/about" className="btn-secondary">More About Me <span>→</span></Link>
       </div>
     </section>
   )
