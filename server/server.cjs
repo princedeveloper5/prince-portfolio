@@ -170,6 +170,9 @@ const skillToJson = (row) => ({
   id: row.id,
   name: row.name,
   category: row.category || 'Tools',
+  // Proficiency 0-100. Exposed so the public Skills page can render level
+  // bars and the admin slider can round-trip the stored value.
+  level: Number.isFinite(Number(row.level)) ? Math.max(0, Math.min(100, Number(row.level))) : 0,
   isPublic: Boolean(row.is_public),
 });
 
@@ -227,6 +230,8 @@ const userToJson = (row) => ({
   name: row.name || '',
   email: row.email,
   role: row.role || 'admin',
+  // Real activity timestamp instead of a hardcoded "Active" badge.
+  lastLogin: row.last_login || null,
 });
 
 const findUploadedFile = (req) => {
@@ -368,6 +373,13 @@ const seedIfEmpty = async (table, sql, rows) => {
 };
 
 const seedData = async () => {
+  // Track when each account last signed in (drives the real "last active"
+  // column in the admin Users table).
+  const userColumns = await all('PRAGMA table_info(users)');
+  if (!userColumns.some((column) => column.name === 'last_login')) {
+    await run('ALTER TABLE users ADD COLUMN last_login TEXT');
+  }
+
   const projectColumns = await all('PRAGMA table_info(projects)');
   const existingProjectColumns = new Set(projectColumns.map((column) => column.name));
   for (const [column, definition] of [['problem', "TEXT DEFAULT ''"], ['features', "TEXT DEFAULT ''"]]) {
@@ -511,7 +523,20 @@ app.post('/api/login', limitRequests({ windowMs: 15 * 60 * 1000, max: 10, messag
     JWT_SECRET,
     { expiresIn: '7d' },
   );
-  res.json({ token, user: userToJson(user) });
+
+  // Record the sign-in so the admin Users table can show a real
+  // "last active" value instead of a hardcoded status.
+  try {
+    await run('UPDATE users SET last_login = ? WHERE id = ?', [
+      new Date().toISOString().slice(0, 19).replace('T', ' '),
+      user.id,
+    ]);
+  } catch {
+    /* non-critical: login still succeeds if the column is missing */
+  }
+
+  const fresh = await get('SELECT id, name, email, role, last_login FROM users WHERE id = ?', [user.id]);
+  res.json({ token, user: userToJson(fresh) });
 }));
 
 app.post('/api/password-reset/request', limitRequests({ windowMs: 15 * 60 * 1000, max: 5, message: 'Too many reset requests. Try again later.' }), asyncRoute(async (req, res) => {
@@ -849,7 +874,7 @@ app.delete('/api/messages/:id', requireAuth, asyncRoute(async (req, res) => {
 
 // ---------- users ----------
 app.get('/api/users', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
-  const rows = await all('SELECT id, name, email, role FROM users ORDER BY id ASC');
+  const rows = await all('SELECT id, name, email, role, last_login FROM users ORDER BY id ASC');
   res.json(rows.map(userToJson));
 }));
 
@@ -871,6 +896,55 @@ app.post('/api/users', requireAuth, requireAdmin, asyncRoute(async (req, res) =>
   ]);
   const row = await get('SELECT id, name, email, role FROM users WHERE id = ?', [info.lastID]);
   res.status(201).json(userToJson(row));
+}));
+
+app.put('/api/users/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  const targetId = Number(req.params.id);
+  const existing = await get('SELECT * FROM users WHERE id = ?', [targetId]);
+  if (!existing) return res.status(404).json({ error: 'User not found' });
+
+  const b = req.body || {};
+  const name = b.name !== undefined ? String(b.name).trim() : existing.name;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  if (name.length > 120) return res.status(400).json({ error: 'Name is too long.' });
+
+  const role = b.role !== undefined ? (b.role === 'editor' ? 'editor' : 'admin') : existing.role;
+
+  // Changing your own role away from admin would lock you out of the
+  // admin-only screens, so it is refused here (same rule as deletion).
+  if (targetId === req.user.id && role !== 'admin') {
+    return res.status(400).json({ error: 'You cannot remove your own admin role' });
+  }
+  // Never allow the last remaining admin to be demoted.
+  if (role !== 'admin' && existing.role === 'admin') {
+    const admins = await get("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'");
+    if (admins.n <= 1) return res.status(400).json({ error: 'Cannot demote the last admin account' });
+  }
+
+  let email = existing.email;
+  if (b.email !== undefined) {
+    const clean = String(b.email).toLowerCase().trim();
+    if (!EMAIL_RE.test(clean)) return res.status(400).json({ error: 'A valid email is required' });
+    const clash = await get('SELECT id FROM users WHERE email = ? AND id != ?', [clean, targetId]);
+    if (clash) return res.status(409).json({ error: 'A user with this email already exists' });
+    email = clean;
+  }
+
+  // Password is optional on edit; when supplied it must meet the same
+  // 12-character rule as account creation.
+  let password = existing.password;
+  if (b.password !== undefined && b.password !== '') {
+    if (String(b.password).length < 12) {
+      return res.status(400).json({ error: 'Password must be at least 12 characters' });
+    }
+    password = bcrypt.hashSync(String(b.password), 10);
+  }
+
+  await run('UPDATE users SET name = ?, email = ?, role = ?, password = ? WHERE id = ?', [
+    name, email, role, password, targetId,
+  ]);
+  const row = await get('SELECT id, name, email, role, last_login FROM users WHERE id = ?', [targetId]);
+  res.json(userToJson(row));
 }));
 
 app.delete('/api/users/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => {

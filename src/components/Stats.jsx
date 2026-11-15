@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
+import Reveal from './Reveal'
 
 function Stat({ value, label }) {
   const [count, setCount] = useState(0)
@@ -32,5 +33,5 @@ export default function Stats() {
     { value: stats.totalSkills, label: 'Skills Listed' },
     { value: stats.totalVisits, label: 'Portfolio Visits' },
   ]
-  return <section aria-label="Portfolio statistics" className="px-4 pb-20 sm:px-6 lg:px-8"><div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 text-center sm:grid-cols-3">{items.map((item) => <Stat key={item.label} {...item} />)}</div></section>
+  return <section aria-label="Portfolio statistics" className="px-4 pb-20 sm:px-6 lg:px-8"><div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 text-center sm:grid-cols-3">{items.map((item, index) => <Reveal key={item.label} delay={index * 110} y={22}><Stat {...item} /></Reveal>)}</div></section>
 }

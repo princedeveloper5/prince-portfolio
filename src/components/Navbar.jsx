@@ -17,11 +17,31 @@ export default function Navbar() {
   const location = useLocation()
   const [theme, setTheme] = useState(() => window.localStorage?.getItem('theme') || 'dark')
   const [brandName, setBrandName] = useState('Mugisha Prince')
+  const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     window.localStorage?.setItem('theme', theme)
   }, [theme])
+
+  // Adds depth to the bar once the page has moved off the top.
+  useEffect(() => {
+    let frame = 0
+    const update = () => {
+      frame = 0
+      setScrolled(window.scrollY > 12)
+    }
+    const onScroll = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(update)
+    }
+    update()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -44,7 +64,10 @@ export default function Navbar() {
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-navy-900/95 backdrop-blur-sm border-b border-navy-600/50">
+    <nav
+      className="nav-shell fixed top-0 left-0 right-0 z-50 bg-navy-900/95 backdrop-blur-sm border-b border-navy-600/50"
+      data-scrolled={scrolled ? 'true' : 'false'}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-3">
@@ -60,8 +83,8 @@ export default function Navbar() {
                   to={link.path}
                   end={link.path === '/'}
                   className={({ isActive }) =>
-                    `text-sm font-medium transition-colors duration-200 ${
-                      isActive ? 'text-electric-400' : 'text-gray-300 hover:text-electric-400'
+                    `nav-link text-sm font-medium transition-colors duration-200 ${
+                      isActive ? 'is-active text-electric-400' : 'text-gray-300 hover:text-electric-400'
                     }`
                   }
                 >
@@ -95,16 +118,20 @@ export default function Navbar() {
       </div>
 
       {isOpen && (
-        <div id="mobile-navigation" className="md:hidden bg-navy-800 border-b border-navy-600">
+        <div
+          id="mobile-navigation"
+          className="mobile-menu md:hidden bg-navy-800 border-b border-navy-600"
+        >
           <div className="px-4 pt-2 pb-4 space-y-2">
-            {navLinks.map((link) => (
+            {navLinks.map((link, index) => (
               <NavLink
                 key={link.name}
                 to={link.path}
                 end={link.path === '/'}
                 onClick={() => setIsOpen(false)}
+                style={{ '--menu-delay': `${index * 45}ms` }}
                 className={({ isActive }) =>
-                  `block px-3 py-2 rounded-lg transition-colors duration-200 ${
+                  `mobile-menu__item block px-3 py-2 rounded-lg transition-colors duration-200 ${
                     isActive
                       ? 'text-electric-400 bg-navy-700'
                       : 'text-gray-300 hover:text-electric-400 hover:bg-navy-700'

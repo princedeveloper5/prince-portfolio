@@ -51,16 +51,22 @@ export default function Hero() {
         <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-10 items-center">
           <div className="relative z-10 order-1">
             <h1 className="font-bold leading-tight">
-              <span className="block text-3xl md:text-4xl text-white">{content.greeting}</span>
-              <span className="block text-4xl md:text-6xl text-electric-400">{content.name}</span>
-              <span className="block text-2xl md:text-3xl text-white font-semibold mt-2">
+              <span className="hero-rise block text-3xl md:text-4xl text-white" style={{ '--hero-delay': '60ms' }}>
+                {content.greeting}
+              </span>
+              <span className="hero-rise block text-4xl md:text-6xl text-electric-400" style={{ '--hero-delay': '160ms' }}>
+                {content.name}
+              </span>
+              <span className="hero-rise block text-2xl md:text-3xl text-white font-semibold mt-2" style={{ '--hero-delay': '260ms' }}>
                 {content.title}
               </span>
             </h1>
 
-            <p className="mt-6 text-gray-400 text-lg leading-relaxed max-w-xl">{content.description}</p>
+            <p className="hero-rise mt-6 text-gray-400 text-lg leading-relaxed max-w-xl" style={{ '--hero-delay': '360ms' }}>
+              {content.description}
+            </p>
 
-            <div className="flex flex-wrap gap-4 mt-8">
+            <div className="hero-rise flex flex-wrap gap-4 mt-8" style={{ '--hero-delay': '460ms' }}>
               <Link to="/projects" className="btn-primary">
                 View My Projects
               </Link>
@@ -71,23 +77,25 @@ export default function Hero() {
           </div>
 
           <div className="relative order-2 mx-auto w-full max-w-[250px] sm:max-w-[300px] lg:max-w-[390px] lg:justify-self-end">
-            <div aria-hidden="true" className="absolute left-1/2 top-[38%] h-[62%] w-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-electric-500/30 blur-[70px] sm:blur-[90px]" />
-            <div aria-hidden="true" className="absolute inset-x-[12%] top-[18%] h-[55%] rounded-full bg-cyan-400/20 blur-[55px]" />
-            <div className="relative mx-auto aspect-[4/5] w-full max-h-[390px]">
-              {photoOk ? (
-                <img
-                  src={resolveProfileImage(content.profileImage)}
-                  alt={content.name || 'Mugisha Prince'}
-                  className="hero-portrait absolute inset-0 h-full w-full object-contain object-bottom"
-                  onError={() => setPhotoOk(false)}
-                />
-              ) : (
-                <div className="absolute inset-x-0 bottom-0 flex h-[78%] items-end justify-center">
-                  <div className="flex h-36 w-36 items-center justify-center rounded-full bg-gradient-to-br from-electric-400 to-electric-600 shadow-[0_0_70px_rgba(22,139,255,0.35)]">
-                    <span className="text-4xl font-bold text-navy-900">MP</span>
+            <div aria-hidden="true" className="hero-fade absolute left-1/2 top-[38%] h-[62%] w-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-electric-500/30 blur-[70px] sm:blur-[90px]" style={{ '--hero-delay': '120ms' }} />
+            <div aria-hidden="true" className="hero-fade absolute inset-x-[12%] top-[18%] h-[55%] rounded-full bg-cyan-400/20 blur-[55px]" style={{ '--hero-delay': '220ms' }} />
+            <div className="hero-fade relative mx-auto aspect-[4/5] w-full max-h-[390px]" style={{ '--hero-delay': '200ms' }}>
+              <div className="hero-float h-full w-full">
+                {photoOk ? (
+                  <img
+                    src={resolveProfileImage(content.profileImage)}
+                    alt={content.name || 'Mugisha Prince'}
+                    className="hero-portrait absolute inset-0 h-full w-full object-contain object-bottom"
+                    onError={() => setPhotoOk(false)}
+                  />
+                ) : (
+                  <div className="absolute inset-x-0 bottom-0 flex h-[78%] items-end justify-center">
+                    <div className="flex h-36 w-36 items-center justify-center rounded-full bg-gradient-to-br from-electric-400 to-electric-600 shadow-[0_0_70px_rgba(22,139,255,0.35)]">
+                      <span className="text-4xl font-bold text-navy-900">MP</span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>

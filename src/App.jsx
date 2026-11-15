@@ -1,7 +1,8 @@
 import { Component, lazy, Suspense, useEffect } from 'react'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useLocation } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import SeoManager from './components/SeoManager.jsx'
+import ScrollUI from './components/ScrollUI.jsx'
 
 const HomePage = lazy(() => import('./pages/HomePage.jsx'))
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage.jsx'))
@@ -122,6 +123,40 @@ class AppErrorBoundary extends Component {
   }
 }
 
+/**
+ * Routes wrapped in a keyed container so each navigation replays a short
+ * entrance animation. The key is the pathname (not the search string), so
+ * query-only changes do not re-mount the page.
+ */
+function AnimatedRoutes() {
+  const location = useLocation()
+  return (
+    <div key={location.pathname} className="page-enter">
+      <Routes location={location}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:id" element={<ProjectsPage />} />
+        <Route path="/skills" element={<SkillsPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+        <Route path="/admin/reset-password" element={<ResetPassword />} />
+        <Route path="/admin/dashboard" element={<ProtectedRoute><PremiumAdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/home" element={<ProtectedRoute><HomePageEditor /></ProtectedRoute>} />
+        <Route path="/admin/projects" element={<ProtectedRoute><ProjectsManagement /></ProtectedRoute>} />
+        <Route path="/admin/projects/add" element={<ProtectedRoute><ProjectsManagement /></ProtectedRoute>} />
+        <Route path="/admin/skills" element={<ProtectedRoute><SkillsManagement /></ProtectedRoute>} />
+        <Route path="/admin/about" element={<ProtectedRoute><AboutManagement /></ProtectedRoute>} />
+        <Route path="/admin/contact" element={<ProtectedRoute><ContactManagement /></ProtectedRoute>} />
+        <Route path="/admin/users" element={<ProtectedRoute adminOnly><UsersManagement /></ProtectedRoute>} />
+        <Route path="/admin/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </div>
+  )
+}
+
 export default function App({ onContentLoaded, onContentError } = {}) {
   return (
     <>
@@ -129,28 +164,11 @@ export default function App({ onContentLoaded, onContentError } = {}) {
       <AppErrorBoundary onContentError={onContentError}>
         <Suspense fallback={<RouteFallback />}>
           <ContentLoadedSignal onContentLoaded={onContentLoaded} />
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/skills" element={<SkillsPage />} />
-            <Route path="/contact" element={<ContactPage />} />
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route path="/admin/forgot-password" element={<ForgotPassword />} />
-            <Route path="/admin/reset-password" element={<ResetPassword />} />
-            <Route path="/admin/dashboard" element={<ProtectedRoute><PremiumAdminDashboard /></ProtectedRoute>} />
-            <Route path="/admin/home" element={<ProtectedRoute><HomePageEditor /></ProtectedRoute>} />
-            <Route path="/admin/projects" element={<ProtectedRoute><ProjectsManagement /></ProtectedRoute>} />
-            <Route path="/admin/projects/add" element={<ProtectedRoute><ProjectsManagement /></ProtectedRoute>} />
-            <Route path="/admin/skills" element={<ProtectedRoute><SkillsManagement /></ProtectedRoute>} />
-            <Route path="/admin/about" element={<ProtectedRoute><AboutManagement /></ProtectedRoute>} />
-            <Route path="/admin/contact" element={<ProtectedRoute><ContactManagement /></ProtectedRoute>} />
-            <Route path="/admin/users" element={<ProtectedRoute adminOnly><UsersManagement /></ProtectedRoute>} />
-            <Route path="/admin/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
+          <AnimatedRoutes />
         </Suspense>
       </AppErrorBoundary>
+      {/* Reading progress + back-to-top, shown once the page scrolls. */}
+      <ScrollUI />
     </>
   )
 }

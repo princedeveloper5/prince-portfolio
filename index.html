@@ -9,9 +9,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Paints the brand navy before CSS/JS load: no white flash. -->
+    <!-- Applies the saved theme BEFORE first paint: light-theme visitors
+         never get a dark flash, and the matching background paints with it. -->
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('theme') || 'dark';
+          document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
     <style>
       html, body { margin: 0; background: #0a0e27; }
+      html[data-theme='light'], html[data-theme='light'] body { background: #f4f7fc; }
     </style>
   </head>
   <body>
