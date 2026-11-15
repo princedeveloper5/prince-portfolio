@@ -8,6 +8,8 @@
 
 html {
   scroll-behavior: smooth;
+  /* Prevents a white flash before CSS/JS settle and React mounts the loader. */
+  background: #0a0e27;
 }
 
 body {

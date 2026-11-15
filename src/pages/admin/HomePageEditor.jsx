@@ -56,8 +56,8 @@ export default function HomePageEditor() {
   const handleImageChange = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setStatus('✗ Please select a valid image file')
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      setStatus('✗ Choose a PNG, JPEG, GIF, or WebP image.')
       return
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -217,7 +217,7 @@ export default function HomePageEditor() {
                         <Upload className="w-3 h-3" />
                         Change Image
                       </div>
-                      <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                      <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleImageChange} className="hidden" />
                     </label>
                   )}
                   {selectedFile && (

@@ -170,6 +170,13 @@
   box-shadow: 0 0 0 4px rgba(22, 139, 255, 0.12);
 }
 
+.page-loader__retry:focus-visible {
+  outline: 2px solid #19c8ff;
+  outline-offset: 3px;
+  background: rgba(22, 139, 255, 0.18);
+  box-shadow: 0 0 0 4px rgba(22, 139, 255, 0.12);
+}
+
 .page-loader__sr-only {
   position: absolute;
   width: 1px;

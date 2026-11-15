@@ -103,8 +103,8 @@ export default function ProjectsManagement() {
   }
 
   const processFile = (file) => {
-    if (!file.type.startsWith('image/')) {
-      setErrors(prev => ({ ...prev, image: 'Please select a valid image file' }))
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      setErrors(prev => ({ ...prev, image: 'Choose a PNG, JPEG, GIF, or WebP image.' }))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -499,7 +499,7 @@ export default function ProjectsManagement() {
                   )}
                   <label className="inline-block mt-2 cursor-pointer text-cyan-400 text-sm hover:underline">
                     {imagePreview ? 'Change image' : 'browse files'}
-                    <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleImageChange} className="hidden" />
                   </label>
                   <p className="text-[11px] text-slate-500 mt-1">PNG/JPG up to 5MB</p>
                   {errors.image && <p className="text-red-400 text-xs mt-1">{errors.image}</p>}

@@ -49,9 +49,7 @@ const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'http://localhost:51
   .split(',').map((origin) => origin.trim()).filter(Boolean));
 app.use(cors({ origin(origin, callback) {
   if (!origin || allowedOrigins.has(origin)) return callback(null, true);
-  const error = new Error('This website origin is not allowed by the API.');
-  error.status = 403;
-  return callback(error);
+  return callback(null, false);
 } }));
 app.use(express.json({ limit: '50kb' }));
 app.use((req, res, next) => {
@@ -111,6 +109,14 @@ const upload = multer({
     cb(null, true);
   },
 });
+const uploadCv = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+    filename: (req, file, cb) => cb(null, `cv-${Date.now()}-${Math.round(Math.random() * 1e6)}.pdf`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => file.mimetype === 'application/pdf' ? cb(null, true) : cb(new Error('Upload a PDF file for your CV.')),
+});
 
 const db = new sqlite3.Database(DB_PATH);
 
@@ -150,6 +156,8 @@ const projectToJson = (row) => ({
   title: row.title,
   description: row.description,
   technologies: parseTechnologies(row.technologies),
+  problem: row.problem || '',
+  features: row.features || '',
   liveDemoUrl: row.live_demo_url || '',
   githubUrl: row.github_url || '',
   category: row.category || 'Web Apps',
@@ -162,7 +170,7 @@ const skillToJson = (row) => ({
   id: row.id,
   name: row.name,
   category: row.category || 'Tools',
-  level: Number(row.level) || 50,
+  isPublic: Boolean(row.is_public),
 });
 
 const homeToJson = (row) =>
@@ -189,6 +197,9 @@ const aboutToJson = (row) =>
         id: row.id,
         name: row.name || '',
         title: row.title || '',
+        experience: row.experience || '',
+        interests: row.interests || '',
+        careerGoals: row.career_goals || '',
         description: row.description || '',
         email: row.email || '',
         phone: row.phone || '',
@@ -286,6 +297,8 @@ db.serialize(() => {
     live_demo_url TEXT,
     github_url TEXT,
     category TEXT,
+    problem TEXT DEFAULT '',
+    features TEXT DEFAULT '',
     status TEXT DEFAULT 'Draft',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
@@ -293,7 +306,8 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     category TEXT,
-    level INTEGER
+    level INTEGER,
+    is_public INTEGER NOT NULL DEFAULT 0
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS home_content (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -321,6 +335,9 @@ db.serialize(() => {
     github_url TEXT DEFAULT '',
     linkedin_url TEXT DEFAULT '',
     twitter_url TEXT DEFAULT '',
+    experience TEXT DEFAULT '',
+    interests TEXT DEFAULT '',
+    career_goals TEXT DEFAULT '',
     portrait_image TEXT DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS visit_days (
@@ -351,6 +368,17 @@ const seedIfEmpty = async (table, sql, rows) => {
 };
 
 const seedData = async () => {
+  const projectColumns = await all('PRAGMA table_info(projects)');
+  const existingProjectColumns = new Set(projectColumns.map((column) => column.name));
+  for (const [column, definition] of [['problem', "TEXT DEFAULT ''"], ['features', "TEXT DEFAULT ''"]]) {
+    if (!existingProjectColumns.has(column)) await run(`ALTER TABLE projects ADD COLUMN ${column} ${definition}`);
+  }
+
+  const skillColumns = await all('PRAGMA table_info(skills)');
+  if (!skillColumns.some((column) => column.name === 'is_public')) {
+    await run('ALTER TABLE skills ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0');
+  }
+
   const homeColumns = await all('PRAGMA table_info(home_content)');
   const existingHomeColumns = new Set(homeColumns.map((column) => column.name));
   for (const [column, definition] of [
@@ -371,6 +399,9 @@ const seedData = async () => {
     ['github_url', "TEXT DEFAULT ''"],
     ['linkedin_url', "TEXT DEFAULT ''"],
     ['twitter_url', "TEXT DEFAULT ''"],
+    ['experience', "TEXT DEFAULT ''"],
+    ['interests', "TEXT DEFAULT ''"],
+    ['career_goals', "TEXT DEFAULT ''"],
     ['portrait_image', "TEXT DEFAULT ''"],
   ]) {
     if (!existingAboutColumns.has(column)) {
@@ -720,15 +751,16 @@ app.put('/api/about', requireAuth, upload.any(), asyncRoute(async (req, res) => 
   for (const field of ['cvUrl', 'githubUrl', 'linkedinUrl', 'twitterUrl']) {
     if (b[field] !== undefined && (!isHttpUrl(b[field]) || String(b[field]).length > 2048)) return res.status(400).json({ error: `${field} must be a valid HTTP or HTTPS URL.` });
   }
-  if (String(b.name ?? '').length > 120 || String(b.title ?? '').length > 160 || String(b.description ?? '').length > 12000) return res.status(400).json({ error: 'About content is too long.' });
+  if (String(b.name ?? '').length > 120 || String(b.title ?? '').length > 160 || String(b.experience ?? '').length > 120 || String(b.description ?? '').length > 12000) return res.status(400).json({ error: 'About content is too long.' });
 
   if (existing) {
     await run(
-      `UPDATE about_content SET name = ?, title = ?, description = ?, email = ?, phone = ?, location = ?,
+      `UPDATE about_content SET name = ?, title = ?, experience = ?, description = ?, email = ?, phone = ?, location = ?,
        cv_url = ?, github_url = ?, linkedin_url = ?, twitter_url = ?, portrait_image = ? WHERE id = ?`,
       [
         b.name !== undefined ? b.name : existing.name,
         b.title !== undefined ? b.title : existing.title,
+        b.experience !== undefined ? b.experience : existing.experience,
         b.description !== undefined ? b.description : existing.description,
         b.email !== undefined ? b.email : existing.email,
         b.phone !== undefined ? b.phone : existing.phone,
@@ -747,9 +779,9 @@ app.put('/api/about', requireAuth, upload.any(), asyncRoute(async (req, res) => 
   }
 
   const info = await run(
-    `INSERT INTO about_content (name, title, description, email, phone, location, cv_url, github_url, linkedin_url, twitter_url, portrait_image)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.name || '', b.title || '', b.description || '', b.email || '', b.phone || '', b.location || '', b.cvUrl || '', b.githubUrl || '', b.linkedinUrl || '', b.twitterUrl || '', file ? file.filename : (b.portraitImage || '')],
+    `INSERT INTO about_content (name, title, experience, description, email, phone, location, cv_url, github_url, linkedin_url, twitter_url, portrait_image)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.name || '', b.title || '', b.experience || '', b.description || '', b.email || '', b.phone || '', b.location || '', b.cvUrl || '', b.githubUrl || '', b.linkedinUrl || '', b.twitterUrl || '', file ? file.filename : (b.portraitImage || '')],
   );
   const row = await get('SELECT * FROM about_content WHERE id = ?', [info.lastID]);
   res.status(201).json(aboutToJson(row));

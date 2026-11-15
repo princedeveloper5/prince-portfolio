@@ -9,6 +9,7 @@ const DEFAULTS = {
   ...SITE_CONTACT,
   name: 'Mugisha Prince',
   title: 'Software Developer',
+  experience: '1+ year (learning & building)',
   description: 'Passionate software developer with expertise in building modern web applications and solving real-world problems through technology.',
   cvUrl: '', githubUrl: '', linkedinUrl: '', twitterUrl: '',
 }
@@ -28,6 +29,7 @@ export default function AboutManagement() {
         setAboutData({
           name: data.name || DEFAULTS.name,
           title: data.title || DEFAULTS.title,
+          experience: data.experience || DEFAULTS.experience,
           description: data.description || DEFAULTS.description,
           email: data.email || DEFAULTS.email,
           phone: data.phone || DEFAULTS.phone,
@@ -153,6 +155,10 @@ export default function AboutManagement() {
                 ) : (
                   <p className="text-cyan-400">{aboutData.title}</p>
                 )}
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Experience</label>
+                {editing ? <input value={aboutData.experience} onChange={(event) => setAboutData({ ...aboutData, experience: event.target.value })} className="w-full rounded-lg border border-blue-500/30 bg-[#050B18] px-3 py-2 text-white" /> : <p className="text-slate-300">{aboutData.experience}</p>}
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Description</label>

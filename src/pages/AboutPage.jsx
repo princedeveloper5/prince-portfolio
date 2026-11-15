@@ -11,10 +11,9 @@ const DEFAULT_ABOUT = {
   description:
     "I'm Mugisha Prince, a passionate software developer from Rwanda. I enjoy building web applications that solve real problems and make life easier.\n\nI'm currently learning and improving my skills in modern web technologies. I love turning ideas into real products and I'm always eager to learn something new.",
   ...SITE_CONTACT,
+  experience: '1+ year (learning & building)',
   cvUrl: '', githubUrl: '', linkedinUrl: '', twitterUrl: '',
 }
-
-const EXPERIENCE = '1+ year (learning & building)'
 
 export default function AboutPage() {
   const [photoOk, setPhotoOk] = useState(true)
@@ -28,21 +27,22 @@ export default function AboutPage() {
         .then(([data, home]) => {
           if (cancelled) return
           if (data) {
-          setAbout({
-            ...DEFAULT_ABOUT,
-            ...Object.fromEntries(
-              Object.entries({
-                name: data.name,
-                title: data.title,
-                description: data.description,
-                email: data.email,
-                phone: data.phone,
-                location: data.location,
-                cvUrl: data.cvUrl, githubUrl: data.githubUrl,
-                linkedinUrl: data.linkedinUrl, twitterUrl: data.twitterUrl,
-              }).filter(([, v]) => v && String(v).trim()),
-            ),
-          })
+            setAbout({
+              ...DEFAULT_ABOUT,
+              ...Object.fromEntries(
+                Object.entries({
+                  name: data.name,
+                  title: data.title,
+                  experience: data.experience,
+                  description: data.description,
+                  email: data.email,
+                  phone: data.phone,
+                  location: data.location,
+                  cvUrl: data.cvUrl, githubUrl: data.githubUrl,
+                  linkedinUrl: data.linkedinUrl, twitterUrl: data.twitterUrl,
+                }).filter(([, v]) => v && String(v).trim()),
+              ),
+            })
           }
           const image = data?.portraitImage || home?.profileImage || '/passport-2.png'
           setProfileImage(image === '/mugisha-prince.png' ? '/passport-2.png' : image)
@@ -54,9 +54,6 @@ export default function AboutPage() {
     }
     load()
     window.addEventListener('focus', load)
-    api('/api/home').then((data) => {
-      if (!cancelled && data?.profileImage) setProfileImage(data.profileImage === '/mugisha-prince.png' ? '/passport-2.png' : data.profileImage)
-    }).catch(() => {})
     return () => {
       cancelled = true
       window.removeEventListener('focus', load)
@@ -71,7 +68,7 @@ export default function AboutPage() {
   const INFO = [
     { icon: MapPin, label: 'Location', value: about.location || 'Rwanda' },
     { icon: Mail, label: 'Email', value: about.email || DEFAULT_ABOUT.email },
-    { icon: Briefcase, label: 'Experience', value: EXPERIENCE },
+    { icon: Briefcase, label: 'Experience', value: about.experience },
   ]
 
   return (
@@ -95,7 +92,7 @@ export default function AboutPage() {
               ))}
 
               <div className="space-y-5 mb-9">
-                {INFO.map(({ icon: Icon, label, value }) => (
+                {INFO.filter(({ value }) => value).map(({ icon: Icon, label, value }) => (
                   <div key={label} className="flex items-center gap-4">
                     <div className="w-11 h-11 shrink-0 bg-navy-800 border border-navy-600 rounded-lg flex items-center justify-center text-electric-400">
                       <Icon className="w-5 h-5" />
