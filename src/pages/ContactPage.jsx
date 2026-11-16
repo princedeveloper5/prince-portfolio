@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Mail, MapPin, Phone, Send, User } from 'lucide-react'
+import { Mail, MapPin, MessageSquare, Phone, Send, User } from 'lucide-react'
 import { FaGithub, FaLinkedinIn, FaTwitter } from 'react-icons/fa'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import Reveal from '../components/Reveal'
 import { api, isOfflineError } from '../api.js'
 import { SITE_CONTACT, SITE_SOCIALS } from '../siteConfig.js'
 
 const DEFAULTS = SITE_CONTACT
 const ICONS = { github: FaGithub, linkedin: FaLinkedinIn, twitter: FaTwitter }
 
-const emptyForm = { name: '', email: '', message: '' }
+const emptyForm = { name: '', email: '', subject: '', message: '' }
 
 export default function ContactPage() {
   const [form, setForm] = useState(emptyForm)
@@ -61,6 +62,8 @@ export default function ContactPage() {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       next.email = 'Please enter a valid email address.'
     }
+    if (!form.subject.trim()) next.subject = 'Please add a subject.'
+    else if (form.subject.trim().length > 150) next.subject = 'Please keep the subject under 150 characters.'
     if (!form.message.trim()) next.message = 'Please write a message.'
     return next
   }
@@ -84,6 +87,7 @@ export default function ContactPage() {
         body: {
           name: form.name.trim(),
           email: form.email.trim(),
+          subject: form.subject.trim(),
           message: form.message.trim(),
         },
       })
@@ -116,7 +120,7 @@ export default function ContactPage() {
       <main className="pt-28 pb-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.15fr)] gap-10 lg:gap-14 items-start">
-            <div>
+            <Reveal y={26}>
               <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">Get In Touch</h1>
               <p className="text-gray-400 text-base md:text-lg leading-relaxed max-w-md mb-10">
                 Have a project in mind or want to work together? Feel free to reach out.
@@ -148,8 +152,9 @@ export default function ContactPage() {
                   })}
                 </div>
               </div>}
-            </div>
+            </Reveal>
 
+            <Reveal delay={120} y={34}>
             <form
               onSubmit={handleSubmit}
               noValidate
@@ -177,6 +182,17 @@ export default function ContactPage() {
                   onChange={update('email')}
                   error={errors.email}
                   autoComplete="email"
+                />
+                <Field
+                  id="contact-subject"
+                  label="Subject"
+                  icon={MessageSquare}
+                  type="text"
+                  placeholder="e.g. Project enquiry, collaboration…"
+                  value={form.subject}
+                  onChange={update('subject')}
+                  error={errors.subject}
+                  maxLength={150}
                 />
                 <div>
                   <label htmlFor="contact-message" className="block text-white text-sm font-medium mb-2">
@@ -225,6 +241,7 @@ export default function ContactPage() {
                 )}
               </button>
             </form>
+            </Reveal>
           </div>
         </div>
       </main>

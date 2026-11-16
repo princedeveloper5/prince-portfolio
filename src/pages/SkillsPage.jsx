@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FaReact, FaJsSquare, FaHtml5, FaCss3Alt, FaNodeJs, FaGitAlt, FaGithub } from 'react-icons/fa'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import Reveal from '../components/Reveal'
 import { api, isOfflineError } from '../api.js'
 
 /**
@@ -37,9 +38,12 @@ const initials = (name) =>
 
 function decorate(skill) {
   const meta = LOOKUP[String(skill.name || '').toLowerCase()] || {}
+  const rawLevel = Number(skill.level)
   return {
     id: skill.id,
     name: skill.name,
+    category: skill.category || 'Tools',
+    level: Number.isFinite(rawLevel) ? Math.max(0, Math.min(100, rawLevel)) : null,
     Icon: meta.Icon ?? null,
     label: meta.label ?? initials(skill.name),
     color: meta.color ?? '#38bdf8',
@@ -48,9 +52,36 @@ function decorate(skill) {
   }
 }
 
+/** Proficiency bar — fills only once its card has been revealed. */
+function LevelBar({ level, color }) {
+  if (level === null) return null
+  return (
+    <div className="mt-1 w-full" title={`Proficiency ${level}%`}>
+      <div className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-wider text-gray-500">
+        <span>Proficiency</span>
+        <span className="text-electric-400">{level}%</span>
+      </div>
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-navy-900"
+        role="progressbar"
+        aria-valuenow={level}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${level}% proficiency`}
+      >
+        <div
+          className="skill-level__fill h-full rounded-full"
+          style={{ '--level': `${level}%`, background: `linear-gradient(90deg, ${color}88, ${color})` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function SkillsPage() {
   const [skills, setSkills] = useState([])
   const [loadError, setLoadError] = useState('')
+  const [activeCategory, setActiveCategory] = useState('All')
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -77,21 +108,70 @@ export default function SkillsPage() {
     }
   }, [])
 
+  // Categories come from the data, so adding one in the admin panel is
+  // enough for it to appear here as a filter.
+  const categories = useMemo(() => {
+    const seen = []
+    skills.forEach((skill) => {
+      if (skill.category && !seen.includes(skill.category)) seen.push(skill.category)
+    })
+    return seen
+  }, [skills])
+
+  const visible = useMemo(
+    () => (activeCategory === 'All' ? skills : skills.filter((skill) => skill.category === activeCategory)),
+    [skills, activeCategory],
+  )
+
+  const retry = () => {
+    setLoadError('')
+    api('/api/skills')
+      .then((rows) => { if (Array.isArray(rows)) setSkills(rows.map(decorate)) })
+      .catch((err) => setLoadError(err.message))
+  }
+
   return (
     <div className="bg-navy-900 min-h-screen">
       <Navbar />
-      <main className="pt-24 pb-20">
+      <main className="pt-28 pb-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-10">
+          <Reveal className="mb-8" y={24}>
             <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">My Skills</h1>
             <p className="text-gray-400 text-lg">Technologies and tools I work with</p>
-          </div>
+          </Reveal>
+
+          {/* Category filter — only shown once there is more than one. */}
+          {!loadError && categories.length > 1 && (
+            <Reveal className="mb-8 flex flex-wrap items-center gap-3" delay={80} y={18}>
+              {['All', ...categories].map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setActiveCategory(category)}
+                  aria-pressed={activeCategory === category}
+                  className={`rounded-lg px-5 py-2 text-sm font-medium transition-colors duration-200 ${
+                    activeCategory === category
+                      ? 'bg-electric-400 text-navy-900 shadow-lg shadow-electric-400/25'
+                      : 'bg-navy-800 border border-navy-600 text-gray-300 hover:border-electric-400/50 hover:text-electric-400'
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
+              <span className="ml-auto text-sm text-gray-500" role="status">
+                {visible.length} skill{visible.length === 1 ? '' : 's'}
+              </span>
+            </Reveal>
+          )}
 
           <div className="bg-navy-900/60 border border-electric-400/30 rounded-2xl p-6 md:p-8 lg:p-10 shadow-[0_0_80px_rgba(56,189,248,0.08)]">
-            {loadError && <div role="alert" className="mb-5 rounded-lg border border-amber-400/30 bg-amber-400/5 p-4 text-center text-amber-200"><p>{loadError}</p><button onClick={() => api('/api/skills').then((rows) => { if (Array.isArray(rows)) { setSkills(rows.map(decorate)); setLoadError('') } }).catch((err) => setLoadError(err.message))} className="mt-2 underline">Try again</button></div>}
+            {loadError && <div role="alert" className="mb-5 rounded-lg border border-amber-400/30 bg-amber-400/5 p-4 text-center text-amber-200"><p>{loadError}</p><button onClick={retry} className="mt-2 underline">Try again</button></div>}
             {!loadError && skills.length === 0 && <p className="py-10 text-center text-gray-400">No skills have been added yet.</p>}
+            {!loadError && skills.length > 0 && visible.length === 0 && (
+              <p className="py-10 text-center text-gray-400">No skills in this category yet.</p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-              {skills.map((skill) => {
+              {visible.map((skill, index) => {
                 const Icon = skill.Icon
                 const card = (
                   <>
@@ -105,32 +185,36 @@ export default function SkillsPage() {
                     <div>
                       <h3 className="text-white font-semibold text-base md:text-lg">{skill.name}</h3>
                       <p className="text-gray-400 text-xs md:text-sm mt-1">{skill.description}</p>
+                      <p className="mt-1 inline-block rounded bg-navy-900/60 px-2 py-0.5 text-[11px] uppercase tracking-wider text-electric-400/80">
+                        {skill.category}
+                      </p>
                     </div>
+                    <LevelBar level={skill.level} color={skill.color} />
                     <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-electric-400/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   </>
                 )
 
                 const baseClass =
-                  'group relative bg-navy-800/80 border border-navy-600 rounded-xl p-5 flex flex-col items-center text-center gap-3 transition-all duration-300 hover:border-electric-400/70 hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-electric-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-900'
+                  'group relative hover-lift bg-navy-800/80 border border-navy-600 rounded-xl p-5 flex flex-col items-center text-center gap-3 transition-all duration-300 hover:border-electric-400/70 hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-electric-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-900'
 
-                if (skill.url) {
-                  return (
-                    <a
-                      key={skill.id}
-                      href={skill.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={baseClass}
-                      aria-label={`${skill.name} - ${skill.description}, opens official website`}
-                    >
-                      {card}
-                    </a>
-                  )
-                }
                 return (
-                  <div key={skill.id} className={`${baseClass} cursor-default`} aria-label={`${skill.name} - ${skill.description}`}>
-                    {card}
-                  </div>
+                  <Reveal key={skill.id} delay={(index % 3) * 90} y={26}>
+                    {skill.url ? (
+                      <a
+                        href={skill.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={baseClass}
+                        aria-label={`${skill.name} - ${skill.description}, opens official website`}
+                      >
+                        {card}
+                      </a>
+                    ) : (
+                      <div className={`${baseClass} cursor-default`} aria-label={`${skill.name} - ${skill.description}`}>
+                        {card}
+                      </div>
+                    )}
+                  </Reveal>
                 )
               })}
             </div>

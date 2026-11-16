@@ -1,11 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import Reveal from '../components/Reveal'
 import { api, isOfflineError, formatDate } from '../api.js'
 
 const FILTERS = ['All', 'Web Apps', 'Mobile Apps', 'Full Stack']
 
+const SORTS = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'az', label: 'Title A – Z' },
+  { value: 'za', label: 'Title Z – A' },
+]
+
 const ACCENTS = ['#38bdf8', '#0ea5e9', '#0284c7', '#38bdf8']
+
 /**
  * Map one API project onto the card shape used below.
  */
@@ -24,6 +34,8 @@ function fromApi(project, index) {
     id: project.id,
     title,
     description: project.description || '',
+    problem: project.problem || '',
+    features: project.features || '',
     category: project.category || 'Web Apps',
     technologies: Array.isArray(project.technologies) ? project.technologies : [],
     liveDemo: project.liveDemoUrl || '',
@@ -32,6 +44,7 @@ function fromApi(project, index) {
     thumb,
     image: project.image || '',
     date: formatDate(project.createdAt),
+    createdAt: project.createdAt || '',
     status: project.status || 'Published',
   }
 }
@@ -89,8 +102,7 @@ function FolderIcon() {
 
 /**
  * Hand-drawn "app screenshot" placeholder so each card looks like the
- * mockup without needing real image assets. Swap for an <img> when you
- * have real screenshots.
+ * mockup without needing real image assets.
  */
 function ProjectThumb({ accent, variant, label }) {
   const rows = [0, 1, 2, 3]
@@ -194,39 +206,199 @@ function ProjectLink({ href, className, children }) {
   )
 }
 
+/** Full-page view for /projects/:id, including drafts opened from admin. */
+function ProjectDetail({ project, notFound, loading }) {
+  if (loading) {
+    return <p className="py-16 text-center text-gray-400">Loading project…</p>
+  }
+
+  if (notFound || !project) {
+    return (
+      <div className="border border-dashed border-navy-600 rounded-xl py-16 px-6 text-center">
+        <span className="inline-flex items-center justify-center w-14 h-14 bg-electric-400/10 text-electric-400 rounded-2xl mb-4">
+          <FolderIcon />
+        </span>
+        <h1 className="text-2xl font-bold text-white mb-2">Project not found</h1>
+        <p className="text-gray-400 mb-6">This project does not exist or was removed.</p>
+        <Link to="/projects" className="btn-secondary text-sm">← Back to all projects</Link>
+      </div>
+    )
+  }
+
+  const isDraft = project.status !== 'Published'
+
+  return (
+    <article className="max-w-4xl">
+      <Link
+        to="/projects"
+        className="inline-flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-electric-400 mb-8"
+      >
+        ← All projects
+      </Link>
+
+      {isDraft && (
+        <div role="status" className="mb-6 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+          This project is still a <strong>draft</strong>, so it is hidden from the public project list.
+        </div>
+      )}
+
+      <p className="text-xs uppercase tracking-widest text-electric-400 mb-3">
+        {project.category}{project.date ? ` · ${project.date}` : ''}
+      </p>
+      <h1 className="text-3xl md:text-5xl font-bold text-white mb-6">{project.title}</h1>
+
+      <Reveal className="mb-8 overflow-hidden rounded-xl border border-navy-600 bg-white" y={24}>
+        <ProjectVisual project={project} />
+      </Reveal>
+
+      <Reveal className="mb-8" delay={80}>
+        <p className="text-lg leading-relaxed text-gray-300 whitespace-pre-line">{project.description}</p>
+      </Reveal>
+
+      {project.problem && (
+        <Reveal className="mb-8" delay={120}>
+          <h2 className="text-xl font-semibold text-white mb-2">The problem</h2>
+          <p className="leading-relaxed text-gray-400 whitespace-pre-line">{project.problem}</p>
+        </Reveal>
+      )}
+
+      {project.features && (
+        <Reveal className="mb-8" delay={120}>
+          <h2 className="text-xl font-semibold text-white mb-2">What it does</h2>
+          <p className="leading-relaxed text-gray-400 whitespace-pre-line">{project.features}</p>
+        </Reveal>
+      )}
+
+      {project.technologies.length > 0 && (
+        <Reveal className="mb-8" delay={160}>
+          <h2 className="text-xl font-semibold text-white mb-3">Built with</h2>
+          <div className="flex flex-wrap gap-2">
+            {project.technologies.map((tech) => (
+              <span key={tech} className="px-3 py-1.5 bg-navy-800 border border-navy-600 text-gray-300 text-sm rounded-md">
+                {tech}
+              </span>
+            ))}
+          </div>
+        </Reveal>
+      )}
+
+      <Reveal className="flex flex-wrap items-center gap-3 pt-2" delay={200}>
+        {project.liveDemo && (
+          <ProjectLink href={project.liveDemo} className="btn-primary text-sm">
+            <ExternalLinkIcon /> Live Demo
+          </ProjectLink>
+        )}
+        {project.github && (
+          <ProjectLink href={project.github} className="btn-secondary text-sm">
+            <GithubIcon /> GitHub
+          </ProjectLink>
+        )}
+        <Link to="/contact" className="btn-secondary text-sm">Discuss this project</Link>
+      </Reveal>
+    </article>
+  )
+}
+
 export default function ProjectsPage() {
-  const [activeFilter, setActiveFilter] = useState('All')
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [allProjects, setAllProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [query, setQuery] = useState(() => searchParams.get('q') || '')
+  const [sort, setSort] = useState('newest')
+  const [activeFilter, setActiveFilter] = useState(() => {
+    const fromUrl = searchParams.get('category')
+    return fromUrl && FILTERS.includes(fromUrl) ? fromUrl : 'All'
+  })
+
+  const load = () => {
+    setLoading(true)
+    setLoadError('')
+    api('/api/projects')
+      .then((rows) => {
+        if (!Array.isArray(rows)) return
+        // The detail route needs drafts too (admin opens it from the list).
+        setAllProjects(rows.map(fromApi))
+      })
+      .catch((err) => {
+        setLoadError(isOfflineError(err) ? 'Projects are temporarily unavailable. Please try again.' : err.message)
+      })
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
-    let cancelled = false
-    const load = () => {
-      setLoading(true)
-      setLoadError('')
-      api('/api/projects')
-        .then((rows) => {
-          if (cancelled || !Array.isArray(rows)) return
-          const published = rows.filter((p) => (p.status || 'Published') === 'Published')
-          setAllProjects(published.map(fromApi))
-        })
-        .catch((err) => {
-          if (!cancelled) setLoadError(isOfflineError(err) ? 'Projects are temporarily unavailable. Please try again.' : err.message)
-        })
-        .finally(() => { if (!cancelled) setLoading(false) })
-    }
     load()
     window.addEventListener('focus', load)
-    return () => {
-      cancelled = true
-      window.removeEventListener('focus', load)
-    }
+    return () => window.removeEventListener('focus', load)
   }, [])
 
-  const projects = allProjects.filter(
-    (project) => activeFilter === 'All' || project.category === activeFilter,
+  // Detail view: scroll the new page back to the top.
+  useEffect(() => {
+    if (id) window.scrollTo(0, 0)
+  }, [id])
+
+  // Keep the visible filters reflected in the URL so a filtered list can be
+  // shared or bookmarked (replace: no history spam while typing).
+  useEffect(() => {
+    if (id) return
+    const next = new URLSearchParams()
+    if (query.trim()) next.set('q', query.trim())
+    if (activeFilter !== 'All') next.set('category', activeFilter)
+    const current = searchParams.toString()
+    const incoming = next.toString()
+    if (current !== incoming) setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, activeFilter, id])
+
+  const published = useMemo(
+    () => allProjects.filter((project) => project.status === 'Published'),
+    [allProjects],
   )
+
+  const detailProject = useMemo(
+    () => (id ? allProjects.find((project) => String(project.id) === String(id)) : null),
+    [allProjects, id],
+  )
+
+  const projects = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const filtered = published.filter((project) => {
+      const matchesCategory = activeFilter === 'All' || project.category === activeFilter
+      if (!matchesCategory) return false
+      if (!needle) return true
+      return (
+        project.title.toLowerCase().includes(needle) ||
+        project.description.toLowerCase().includes(needle) ||
+        project.technologies.some((tech) => tech.toLowerCase().includes(needle))
+      )
+    })
+
+    const sorted = [...filtered]
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case 'oldest':
+          return String(a.createdAt).localeCompare(String(b.createdAt))
+        case 'az':
+          return a.title.localeCompare(b.title)
+        case 'za':
+          return b.title.localeCompare(a.title)
+        case 'newest':
+        default:
+          return String(b.createdAt).localeCompare(String(a.createdAt))
+      }
+    })
+    return sorted
+  }, [published, activeFilter, query, sort])
+
+  const hasActiveSearch = query.trim() !== '' || activeFilter !== 'All'
+
+  const clearSearch = () => {
+    setQuery('')
+    setActiveFilter('All')
+  }
 
   return (
     <div className="bg-navy-900 min-h-screen">
@@ -234,85 +406,167 @@ export default function ProjectsPage() {
 
       <main className="pt-28 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">My Projects</h1>
-          <p className="text-gray-400 max-w-2xl mb-8 leading-relaxed">
-            Here are some of the projects I have built. Each project helped me improve my skills and
-            solve real-world problems.
-          </p>
-
-          <div className="flex flex-wrap gap-3 mb-10">
-            {FILTERS.map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => setActiveFilter(filter)}
-                aria-pressed={activeFilter === filter}
-                className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
-                  activeFilter === filter
-                    ? 'bg-electric-400 text-navy-900 shadow-lg shadow-electric-400/25'
-                    : 'bg-navy-800 border border-navy-600 text-gray-300 hover:border-electric-400/50 hover:text-electric-400'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-
-          {loading ? <p className="py-16 text-center text-gray-400">Loading published projects…</p> : loadError ? (
-            <div role="alert" className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-6 py-12 text-center text-amber-200">
-              <p>{loadError}</p><button type="button" onClick={() => { setLoading(true); setLoadError(''); api('/api/projects').then((rows) => setAllProjects(Array.isArray(rows) ? rows.filter((p) => p.status === 'Published').map(fromApi) : [])).catch((err) => setLoadError(err.message)).finally(() => setLoading(false)) }} className="mt-3 underline">Try again</button>
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="border border-dashed border-navy-600 rounded-xl py-16 px-6 text-center">
-              <span className="inline-flex items-center justify-center w-14 h-14 bg-electric-400/10 text-electric-400 rounded-2xl mb-4">
-                <FolderIcon />
-              </span>
-              <p className="text-gray-400">No projects in this category yet — stay tuned!</p>
-            </div>
+          {id ? (
+            <ProjectDetail
+              project={detailProject}
+              notFound={!loading && !loadError && !detailProject}
+              loading={loading}
+            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {projects.map((project) => (
-                <article
-                  key={project.id}
-                  className="bg-navy-800 rounded-xl border border-navy-600 overflow-hidden hover:border-electric-400/50 transition-all duration-300 hover:shadow-xl hover:shadow-electric-400/10 group"
-                >
-                  <div className="p-3">
-                    <div className="rounded-lg border border-navy-600 overflow-hidden bg-white">
-                      <ProjectVisual project={project} />
-                    </div>
-                  </div>
+            <>
+              <Reveal y={24}>
+                <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">My Projects</h1>
+                <p className="text-gray-400 max-w-2xl mb-8 leading-relaxed">
+                  Here are some of the projects I have built. Each project helped me improve my skills and
+                  solve real-world problems.
+                </p>
+              </Reveal>
 
-                  <div className="px-6 pb-6">
-                    <h2 className="text-xl font-semibold text-white mb-2 group-hover:text-electric-400 transition-colors duration-200">
-                      {project.title}
-                    </h2>
-                    <p className="text-gray-400 text-sm mb-4 leading-relaxed">{project.description}</p>
+              {/* Search + sort + category filter */}
+              <Reveal className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" delay={80} y={20}>
+                <div className="relative w-full lg:max-w-sm">
+                  <label htmlFor="project-search" className="sr-only">Search projects</label>
+                  <svg
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                    fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" />
+                  </svg>
+                  <input
+                    id="project-search"
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search by title, description or technology…"
+                    className="w-full rounded-lg border border-navy-600 bg-navy-800 py-2.5 pl-10 pr-10 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-electric-400/70"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => setQuery('')}
+                      aria-label="Clear search"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
 
-                    <div className="flex flex-wrap gap-2 mb-5">
-                      {project.technologies.map((tech) => (
-                        <span
-                          key={tech}
-                          className="px-2 py-1 bg-navy-700 border border-navy-600 text-gray-300 text-xs rounded-md"
-                        >
-                          {tech}
-                        </span>
-                      ))}
-                    </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm text-gray-500" role="status">
+                    {loading ? '…' : `${projects.length} of ${published.length} project${published.length === 1 ? '' : 's'}`}
+                  </span>
+                  <label htmlFor="project-sort" className="sr-only">Sort projects</label>
+                  <select
+                    id="project-sort"
+                    value={sort}
+                    onChange={(event) => setSort(event.target.value)}
+                    className="rounded-lg border border-navy-600 bg-navy-800 px-3 py-2.5 text-sm text-gray-300 outline-none transition-colors focus:border-electric-400/70"
+                  >
+                    {SORTS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </Reveal>
 
-                    <div className="flex flex-wrap items-center gap-3">
-                      {project.liveDemo && <ProjectLink href={project.liveDemo} className="btn-primary text-sm">
-                        <ExternalLinkIcon />
-                        Live Demo
-                      </ProjectLink>}
-                      {project.github && <ProjectLink href={project.github} className="btn-secondary text-sm">
-                        <GithubIcon />
-                        GitHub
-                      </ProjectLink>}
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
+              <Reveal className="mb-10 flex flex-wrap gap-3" delay={140} y={18}>
+                {FILTERS.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setActiveFilter(filter)}
+                    aria-pressed={activeFilter === filter}
+                    className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                      activeFilter === filter
+                        ? 'bg-electric-400 text-navy-900 shadow-lg shadow-electric-400/25'
+                        : 'bg-navy-800 border border-navy-600 text-gray-300 hover:border-electric-400/50 hover:text-electric-400'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </Reveal>
+
+              {loading ? (
+                <p className="py-16 text-center text-gray-400">Loading published projects…</p>
+              ) : loadError ? (
+                <div role="alert" className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-6 py-12 text-center text-amber-200">
+                  <p>{loadError}</p>
+                  <button type="button" onClick={load} className="mt-3 underline">Try again</button>
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="border border-dashed border-navy-600 rounded-xl py-16 px-6 text-center">
+                  <span className="inline-flex items-center justify-center w-14 h-14 bg-electric-400/10 text-electric-400 rounded-2xl mb-4">
+                    <FolderIcon />
+                  </span>
+                  <p className="text-gray-400 mb-4">
+                    {hasActiveSearch
+                      ? `No projects match “${query.trim() || activeFilter}”.`
+                      : 'No projects in this category yet — stay tuned!'}
+                  </p>
+                  {hasActiveSearch && (
+                    <button
+                      type="button"
+                      onClick={clearSearch}
+                      className="text-sm text-electric-400 underline transition-colors hover:text-white"
+                    >
+                      Clear search and filters
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {projects.map((project, index) => (
+                    <Reveal key={project.id} delay={(index % 2) * 100} y={34}>
+                      <article className="hover-lift group h-full overflow-hidden bg-navy-800 rounded-xl border border-navy-600 transition-all duration-300 hover:border-electric-400/50 hover:shadow-xl hover:shadow-electric-400/10">
+                        <div className="p-3">
+                          <div className="rounded-lg border border-navy-600 overflow-hidden bg-white">
+                            <ProjectVisual project={project} />
+                          </div>
+                        </div>
+
+                        <div className="px-6 pb-6">
+                          <h2 className="text-xl font-semibold text-white mb-2 group-hover:text-electric-400 transition-colors duration-200">
+                            {project.title}
+                          </h2>
+                          <p className="text-gray-400 text-sm mb-4 leading-relaxed">{project.description}</p>
+
+                          <div className="flex flex-wrap gap-2 mb-5">
+                            {project.technologies.map((tech) => (
+                              <span
+                                key={tech}
+                                className="px-2 py-1 bg-navy-700 border border-navy-600 text-gray-300 text-xs rounded-md"
+                              >
+                                {tech}
+                              </span>
+                            ))}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/projects/${project.id}`)}
+                              className="btn-primary text-sm"
+                            >
+                              View details
+                            </button>
+                            {project.liveDemo && <ProjectLink href={project.liveDemo} className="btn-secondary text-sm">
+                              <ExternalLinkIcon />
+                              Live Demo
+                            </ProjectLink>}
+                            {project.github && <ProjectLink href={project.github} className="btn-secondary text-sm">
+                              <GithubIcon />
+                              GitHub
+                            </ProjectLink>}
+                          </div>
+                        </div>
+                      </article>
+                    </Reveal>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
