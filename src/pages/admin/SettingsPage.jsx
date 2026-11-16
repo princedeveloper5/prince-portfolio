@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Lock, X, Check, Info } from 'lucide-react'
+import { Bell, Lock, X, Check, Info, Mail, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { api, isOfflineError } from '../../api.js'
@@ -13,6 +13,32 @@ export default function SettingsPage() {
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [pwError, setPwError] = useState('')
   const [savingPw, setSavingPw] = useState(false)
+  const [emailStatus, setEmailStatus] = useState(null)
+  const [emailError, setEmailError] = useState('')
+  const [testingEmail, setTestingEmail] = useState(false)
+  const [testResult, setTestResult] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    api('/api/email/status', { auth: true })
+      .then((data) => { if (!cancelled) setEmailStatus(data) })
+      .catch((err) => { if (!cancelled) setEmailError(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message) })
+    return () => { cancelled = true }
+  }, [])
+
+  const handleTestEmail = async () => {
+    setTestingEmail(true)
+    setTestResult('')
+    setEmailError('')
+    try {
+      const result = await api('/api/email/test', { method: 'POST', auth: true })
+      setTestResult(`✓ Test email sent to ${result.to}. Check that inbox (and its Spam folder).`)
+    } catch (err) {
+      setEmailError(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message)
+    } finally {
+      setTestingEmail(false)
+    }
+  }
 
   useEffect(() => {
     const sync = (event) => setPrefs(event.detail || readPrefs())
@@ -150,6 +176,86 @@ export default function SettingsPage() {
             </div>
           </motion.div>
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-2xl p-6"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Mail className="w-5 h-5 text-cyan-400" />
+            <h2 className="text-xl font-semibold text-white">Email notifications</h2>
+            {emailStatus && (
+              <span
+                className={`ml-auto text-xs px-2 py-1 rounded-full border ${
+                  emailStatus.configured
+                    ? 'text-green-400 bg-green-500/10 border-green-500/30'
+                    : 'text-amber-300 bg-amber-400/10 border-amber-400/30'
+                }`}
+              >
+                {emailStatus.configured ? 'Configured' : 'Not configured'}
+              </span>
+            )}
+          </div>
+
+          {emailError && (
+            <div className="text-sm text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2 mb-4" role="alert">
+              {emailError}
+            </div>
+          )}
+          {testResult && (
+            <div className="text-sm text-green-400 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2 mb-4" role="status">
+              {testResult}
+            </div>
+          )}
+
+          {emailStatus ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="p-3 bg-[#050B18] border border-blue-500/30 rounded-lg">
+                  <p className="text-slate-400 text-xs uppercase tracking-wide">Notify inbox</p>
+                  <p className="text-white mt-1 break-all">{emailStatus.contactTo || 'Not set (CONTACT_TO missing)'}</p>
+                </div>
+                <div className="p-3 bg-[#050B18] border border-blue-500/30 rounded-lg">
+                  <p className="text-slate-400 text-xs uppercase tracking-wide">SMTP server</p>
+                  <p className="text-white mt-1">
+                    {emailStatus.host
+                      ? `${emailStatus.host}:${emailStatus.port}${emailStatus.secure ? ' (SSL)' : ''}`
+                      : 'Not set (SMTP_HOST missing)'}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-400">
+                When configured, every contact-form submission and password reset sends an
+                email to the inbox above. Credentials live in the git-ignored <code className="text-cyan-400">.env</code> file.
+              </p>
+              <button
+                type="button"
+                onClick={handleTestEmail}
+                disabled={testingEmail || !emailStatus.configured}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg font-medium text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testingEmail ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {testingEmail ? 'Sending…' : 'Send test email'}
+              </button>
+              {!emailStatus.configured && (
+                <p className="text-xs text-slate-500">
+                  Copy <code className="text-cyan-400">.env.example</code> to <code className="text-cyan-400">.env</code>,
+                  fill in your Gmail address and app password, then restart the server.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="h-24 flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-blue-500/30 border-t-cyan-400 rounded-full animate-spin"></div>
+            </div>
+          )}
+        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}

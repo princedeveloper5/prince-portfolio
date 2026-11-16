@@ -77,4 +77,18 @@ npm run build
 npm run preview
 ```
 
-The SQLite database is `portfolio.db`; uploaded images are stored in `server/uploads`. For hosting, set `DATABASE_PATH` and `UPLOAD_DIR` to persistent mounted storage. Create a database and uploads snapshot with `npm run db:backup` (or set `BACKUP_DIR` to choose where the snapshot is written). Backups are ignored by Git.
+Local development stores data in `portfolio.db` and uploaded images in `server/uploads`. The hosted setup below uses Turso and Supabase so data survives restarts on a free API host.
+
+## Free hosted backend
+
+Vercel serves the frontend and forwards `/api/*` and `/uploads/*` to the Express service on Render. Render's free web service has an ephemeral filesystem and sleeps after inactivity, so the API stores its database in Turso and its uploaded images in Supabase Storage. Both services have free plans; free tiers have usage limits, and Render may take up to a minute to wake after it has been idle. See [Render's free service limits](https://render.com/docs/free) and [Supabase's free plan](https://supabase.com/pricing).
+
+1. Create a Turso database and an authentication token. Keep `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` handy.
+2. Create a Supabase project. Keep its project URL and server-side `service_role` key handy. Never put the service role key in frontend code or commit it. The API creates a public `portfolio-uploads` bucket automatically for portfolio images.
+3. In Render, create a Blueprint from this GitHub repository and apply `render.yaml`. Enter the Turso and Supabase values when Render prompts for the service's environment, then set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (at least 12 characters). Render generates `JWT_SECRET`.
+4. Confirm the Render URL is `https://prince-portfolio-api.onrender.com`. If it differs, update the API and uploads destinations in `vercel.json`.
+5. Deploy these changes through GitHub so Vercel picks up `vercel.json`.
+6. After Render has started and `/api/health` responds, copy `.env.example` to `.env`, fill in the same Turso and Supabase values, then run `npm run db:migrate:turso` once to copy the current `portfolio.db` and files in `server/uploads` to the hosted services. Run it from the project root; do not commit `.env`.
+7. Check `https://prince-portfolio-panta6.vercel.app/api/health`, then sign in at `/admin/login`.
+
+The migration preserves the existing SQLite content and uploads. For an existing administrator, use that account's current email and password to sign in after migration. Free hosted services can pause or sleep after inactivity, and their quotas and terms can change.

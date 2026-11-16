@@ -21,12 +21,13 @@ DB_NAME=portfolio_db
 # Session
 SESSION_SECRET=your_session_secret_key
 
-# Email (for password reset)
+# Email (for password reset and contact notifications)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-SMTP_FROM=noreply@mugishaprince.com
+SMTP_PASS=your_app_password
+SMTP_FROM=your_email@gmail.com
+CONTACT_TO=your_email@gmail.com
 
 # JWT (if using token-based auth)
 JWT_SECRET=your_jwt_secret

@@ -1,3 +1,5 @@
 node_modules
 backups/
 server/.dev-jwt-secret
+.env
+server/.env

@@ -1,6 +1,10 @@
+// Load .env (project root) before any env vars are read. Node >=20.12 ships
+// process.loadEnvFile(), so no dotenv dependency is needed. Fails soft: a
+// missing file simply means SMTP stays unconfigured.
+try { process.loadEnvFile(require('path').join(__dirname, '..', '.env')); } catch { /* no .env yet */ }
+
 const express = require('express');
 const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -8,6 +12,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const db = require('./database.cjs');
+const cloudStorage = require('./cloud-storage.cjs');
+
+if (process.env.NODE_ENV === 'production' && (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN || !cloudStorage.enabled)) {
+  throw new Error('Production requires TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+}
 
 const app = express();
 app.disable('x-powered-by');
@@ -40,10 +50,10 @@ const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMT
   : null;
 
 // ---- Paths (always relative to THIS file, never to process.cwd()) ----
-const DB_PATH = path.resolve(process.env.DATABASE_PATH || path.join(__dirname, '..', 'portfolio.db'));
+const DB_PATH = process.env.TURSO_DATABASE_URL ? 'Turso/libSQL' : path.resolve(process.env.DATABASE_PATH || path.join(__dirname, '..', 'portfolio.db'));
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'));
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+if (!process.env.TURSO_DATABASE_URL) fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+if (!cloudStorage.enabled) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173')
   .split(',').map((origin) => origin.trim()).filter(Boolean));
@@ -66,7 +76,7 @@ app.use('/api', (req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
-app.use('/uploads', express.static(UPLOAD_DIR));
+if (!cloudStorage.enabled) app.use('/uploads', express.static(UPLOAD_DIR));
 
 const requestBuckets = new Map();
 function limitRequests({ windowMs, max, message }) {
@@ -92,7 +102,7 @@ setInterval(() => {
 }, 60_000).unref();
 
 // ---- File uploads (project images, profile photo) ----
-const storage = multer.diskStorage({
+const storage = cloudStorage.enabled ? multer.memoryStorage() : multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
     const safeExt = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' })[file.mimetype] || '.img';
@@ -109,6 +119,13 @@ const upload = multer({
     cb(null, true);
   },
 });
+const handleUploads = (req, res, next) => upload.any()(req, res, async (error) => {
+  if (error) return next(error);
+  try {
+    for (const file of req.files || []) await cloudStorage.save(file);
+    next();
+  } catch (uploadError) { next(uploadError); }
+});
 const uploadCv = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -117,8 +134,6 @@ const uploadCv = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => file.mimetype === 'application/pdf' ? cb(null, true) : cb(new Error('Upload a PDF file for your CV.')),
 });
-
-const db = new sqlite3.Database(DB_PATH);
 
 // ---------- helpers ----------
 const run = (sql, params = []) =>
@@ -147,6 +162,10 @@ const parseTechnologies = (value) => {
 
 const uploadPath = (value) => {
   if (!value) return '';
+  if (cloudStorage.enabled && !/^(https?:)?\/\//.test(value)) {
+    if (value.startsWith('/uploads/')) return cloudStorage.publicUrl(path.basename(value));
+    if (!value.startsWith('/')) return cloudStorage.publicUrl(value);
+  }
   if (/^(https?:)?\/\//.test(value) || value.startsWith('/')) return value;
   return `/uploads/${value}`;
 };
@@ -241,13 +260,14 @@ const findUploadedFile = (req) => {
 
 const removeUploadedFile = (fileName) => {
   if (!fileName || /^(https?:)?\/\//.test(fileName) || fileName.startsWith('/')) return;
+  if (cloudStorage.enabled) return cloudStorage.remove(fileName);
   const target = path.join(UPLOAD_DIR, path.basename(fileName));
   fs.unlink(target, () => {});
 };
 
 function hasValidImageSignature(file) {
   if (!file) return true;
-  const bytes = fs.readFileSync(file.path);
+  const bytes = file.buffer || fs.readFileSync(file.path);
   const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   const gif = bytes.length >= 6 && ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString('ascii'));
@@ -610,7 +630,7 @@ app.get('/api/public/stats', asyncRoute(async (req, res) => {
   res.json({ publishedProjects: projects.n, totalSkills: skills.n, totalVisits: visits?.value || 0 });
 }));
 
-app.post('/api/projects', requireAuth, upload.any(), asyncRoute(async (req, res) => {
+app.post('/api/projects', requireAuth, handleUploads, asyncRoute(async (req, res) => {
   const file = findUploadedFile(req);
   if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
   const { title, description, technologies, liveDemoUrl, githubUrl, category, status } = req.body || {};
@@ -636,7 +656,7 @@ app.post('/api/projects', requireAuth, upload.any(), asyncRoute(async (req, res)
   res.status(201).json(projectToJson(row));
 }));
 
-app.put('/api/projects/:id', requireAuth, upload.any(), asyncRoute(async (req, res) => {
+app.put('/api/projects/:id', requireAuth, handleUploads, asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
   const file = findUploadedFile(req);
   if (!existing) { if (file) removeUploadedFile(file.filename); return res.status(404).json({ error: 'Project not found' }); }
@@ -721,7 +741,7 @@ app.get('/api/home', asyncRoute(async (req, res) => {
   res.json(homeToJson(row));
 }));
 
-app.put('/api/home', requireAuth, upload.any(), asyncRoute(async (req, res) => {
+app.put('/api/home', requireAuth, handleUploads, asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM home_content ORDER BY id ASC LIMIT 1');
   const file = findUploadedFile(req);
   if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
@@ -768,7 +788,7 @@ app.get('/api/about', asyncRoute(async (req, res) => {
   res.json(aboutToJson(row));
 }));
 
-app.put('/api/about', requireAuth, upload.any(), asyncRoute(async (req, res) => {
+app.put('/api/about', requireAuth, handleUploads, asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM about_content ORDER BY id ASC LIMIT 1');
   const b = req.body || {};
   const file = findUploadedFile(req);
@@ -870,6 +890,40 @@ app.delete('/api/messages/:id', requireAuth, asyncRoute(async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Message not found' });
   await run('DELETE FROM messages WHERE id = ?', [existing.id]);
   res.json({ success: true, id: existing.id });
+}));
+
+// ---- Email notification status / test (never exposes credentials) ----
+app.get('/api/email/status', requireAuth, asyncRoute(async (req, res) => {
+  const configured = Boolean(mailer && process.env.CONTACT_TO);
+  res.json({
+    configured,
+    contactTo: process.env.CONTACT_TO || null,
+    host: process.env.SMTP_HOST || null,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === 'true',
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || null,
+  });
+}));
+
+app.post('/api/email/test', requireAuth, asyncRoute(async (req, res) => {
+  if (!mailer) {
+    return res.status(503).json({ error: 'SMTP is not configured. Set SMTP_HOST, SMTP_USER and SMTP_PASS in .env, then restart the server.' });
+  }
+  if (!process.env.CONTACT_TO) {
+    return res.status(503).json({ error: 'CONTACT_TO is not set in .env, so there is no address to notify.' });
+  }
+  try {
+    await mailer.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: process.env.CONTACT_TO,
+      subject: 'Portfolio: test notification',
+      text: `This is a test email from your portfolio server.\n\nIf you are reading it, email notifications are working.\nSent at ${new Date().toISOString()}`,
+    });
+    res.json({ success: true, to: process.env.CONTACT_TO });
+  } catch (error) {
+    console.error('[mail] test email failed:', error.message);
+    res.status(502).json({ error: `Test email failed: ${error.message}` });
+  }
 }));
 
 // ---------- users ----------
@@ -1051,6 +1105,9 @@ app.use((err, req, res, next) => {
 });
 
 startupReady
+  .then(() => {
+    return cloudStorage.prepareBucket();
+  })
   .then(() => {
     app.listen(PORT, () => {
       console.log(`[server] API listening on http://localhost:${PORT}`);
