@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Briefcase, Download, Mail, MapPin } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import Reveal from '../components/Reveal'
 import { api, isOfflineError } from '../api.js'
 import { SITE_CONTACT } from '../siteConfig.js'
 
@@ -79,7 +80,7 @@ export default function AboutPage() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
             {/* Left — intro */}
-            <div>
+            <Reveal y={30}>
               <h1 className="text-3xl md:text-4xl font-bold text-white mb-6">About Me</h1>
 
               {paragraphs.map((paragraph, index) => (
@@ -92,38 +93,42 @@ export default function AboutPage() {
               ))}
 
               <div className="space-y-5 mb-9">
-                {INFO.filter(({ value }) => value).map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="flex items-center gap-4">
-                    <div className="w-11 h-11 shrink-0 bg-navy-800 border border-navy-600 rounded-lg flex items-center justify-center text-electric-400">
-                      <Icon className="w-5 h-5" />
+                {INFO.filter(({ value }) => value).map(({ icon: Icon, label, value }, index) => (
+                  <Reveal key={label} delay={120 + index * 90} y={18}>
+                    <div className="flex items-center gap-4">
+                      <div className="w-11 h-11 shrink-0 bg-navy-800 border border-navy-600 rounded-lg flex items-center justify-center text-electric-400">
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-semibold">{label}</p>
+                        <p className="text-gray-400 text-sm">{value}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-white text-sm font-semibold">{label}</p>
-                      <p className="text-gray-400 text-sm">{value}</p>
-                    </div>
-                  </div>
+                  </Reveal>
                 ))}
               </div>
 
-              {about.cvUrl ? (
-                <a href={about.cvUrl} target="_blank" rel="noreferrer" className="btn-primary">
-                  <Download className="w-4 h-4" />
-                  Download CV
-                </a>
-              ) : (
-                <span
-                  className="btn-primary opacity-50 cursor-not-allowed pointer-events-none"
-                  title="Add the CV file URL in Admin → About"
-                  aria-disabled="true"
-                >
-                  <Download className="w-4 h-4" />
-                  Download CV
-                </span>
-              )}
-            </div>
+              <Reveal delay={220} y={16}>
+                {about.cvUrl ? (
+                  <a href={about.cvUrl} target="_blank" rel="noreferrer" className="btn-primary">
+                    <Download className="w-4 h-4" />
+                    Download CV
+                  </a>
+                ) : (
+                  <span
+                    className="btn-primary opacity-50 cursor-not-allowed pointer-events-none"
+                    title="Add the CV file URL in Admin → About"
+                    aria-disabled="true"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download CV
+                  </span>
+                )}
+              </Reveal>
+            </Reveal>
 
             {/* Right — portrait */}
-            <div className="relative mx-auto max-w-md lg:max-w-none w-full">
+            <Reveal className="relative mx-auto max-w-md lg:max-w-none w-full" delay={140} y={36}>
               <div className="absolute inset-0 bg-gradient-to-r from-electric-400/20 to-electric-600/20 rounded-3xl blur-3xl"></div>
               <div className="relative bg-gradient-to-br from-navy-800 to-navy-900 rounded-3xl border border-navy-600 overflow-hidden">
                 <div className="aspect-[4/5] relative">
@@ -149,7 +154,7 @@ export default function AboutPage() {
                   <div className="absolute bottom-8 left-4 w-16 h-16 bg-electric-600/10 rounded-full blur-xl"></div>
                 </div>
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
       </main>

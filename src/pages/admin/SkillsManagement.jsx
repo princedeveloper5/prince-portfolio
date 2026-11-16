@@ -51,7 +51,8 @@ export default function SkillsManagement() {
       await api(`/api/skills/${id}`, { method: 'DELETE', auth: true })
       setSkills((prev) => prev.filter((s) => s.id !== id))
     } catch (err) {
-      alert(err.message)
+      // Surface inline (the banner below the header) instead of a blocking alert().
+      setLoadError(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message)
     }
   }
 

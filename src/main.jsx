@@ -4,8 +4,12 @@ import { HashRouter } from 'react-router-dom'
 import App from './App.jsx'
 import { AuthProvider } from './AuthContext.jsx'
 import './index.css'
+import { initPrefs } from './adminPrefs.js'
 import PageLoader from './components/loader/PageLoader.jsx'
 import { useAppReady } from './hooks/useAppReady.js'
+
+// Applies the saved "reduce motion" preference before the first render.
+initPrefs()
 
 function Root() {
   const { ready, error, retry, markContentLoaded, markContentError } = useAppReady({

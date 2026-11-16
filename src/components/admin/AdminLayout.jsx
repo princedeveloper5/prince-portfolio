@@ -3,6 +3,8 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Bell, Code, ExternalLink, Folder, Home, Mail, Menu, Settings, User, Users, X, LogOut } from 'lucide-react'
 import { useAuth } from '../../AuthContext.jsx'
 import { api } from '../../api.js'
+import { PREFS_EVENT, readPrefs } from '../../adminPrefs.js'
+import { UNREAD_EVENT } from '../../adminEvents.js'
 import logoImg from '../../../my images/logo.png'
 
 const menuItems = [
@@ -20,9 +22,17 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [unread, setUnread] = useState(0)
+  // Honors the Settings > "Unread message badge" preference.
+  const [showBadge, setShowBadge] = useState(() => readPrefs().unreadBadge)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    const sync = (event) => setShowBadge(event.detail?.unreadBadge !== false)
+    window.addEventListener(PREFS_EVENT, sync)
+    return () => window.removeEventListener(PREFS_EVENT, sync)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -31,7 +41,14 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
     }).catch(() => {})
     refresh()
     window.addEventListener('focus', refresh)
-    return () => { active = false; window.removeEventListener('focus', refresh) }
+    // Pages that change message state (read/delete) announce it so the
+    // sidebar badge updates immediately instead of waiting for navigation.
+    window.addEventListener(UNREAD_EVENT, refresh)
+    return () => {
+      active = false
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener(UNREAD_EVENT, refresh)
+    }
   }, [location.pathname])
 
   const visibleItems = menuItems.filter((item) => !item.adminOnly || user?.role === 'admin')
@@ -49,7 +66,7 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
           {visibleItems.map(({ icon: Icon, label, path }) => (
             <NavLink key={path} to={path} onClick={() => setMenuOpen(false)} className={({ isActive }) => `flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${isActive || (path === '/admin/projects' && location.pathname.startsWith('/admin/projects')) ? 'border border-blue-400/40 bg-blue-500/15 text-white' : 'text-slate-300 hover:bg-blue-500/10 hover:text-white'}`}>
               <Icon className="h-5 w-5 text-cyan-400" /><span className="font-medium">{label}</span>
-              {label === 'Messages' && unread > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 text-center text-xs text-white">{unread}</span>}
+              {label === 'Messages' && showBadge && unread > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 text-center text-xs text-white">{unread}</span>}
             </NavLink>
           ))}
         </nav>
@@ -65,7 +82,7 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
             <div><h1 className="font-semibold">{currentPage}</h1><p className="hidden text-xs text-slate-400 sm:block">Manage your portfolio content</p></div>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
-            <button onClick={() => navigate('/admin/contact')} title={`${unread} unread messages`} className="relative rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white"><Bell size={19} />{unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-400" />}</button>
+            <button onClick={() => navigate('/admin/contact')} title={`${unread} unread messages`} className="relative rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white"><Bell size={19} />{showBadge && unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-400" />}</button>
             <div className="relative">
               <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex max-w-[190px] items-center gap-2 rounded-xl border border-blue-500/30 bg-[#08152A] px-2 py-1.5 hover:border-cyan-400/50 sm:px-3">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-sm font-semibold">{(user?.name || 'MP').split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>

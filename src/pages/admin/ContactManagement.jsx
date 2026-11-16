@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mail, Eye, Trash2, Clock, Inbox } from 'lucide-react'
+import { Mail, Eye, Trash2, Clock, Inbox, X } from 'lucide-react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { api, formatDate, isOfflineError, timeAgo } from '../../api.js'
+import { notifyUnreadChanged } from '../../adminEvents.js'
 
 export default function ContactManagement() {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
+  // Inline feedback for per-message action failures (no blocking alerts).
+  const [actionError, setActionError] = useState('')
 
   const load = async () => {
     setLoading(true)
@@ -32,23 +35,28 @@ export default function ContactManagement() {
   }, [])
 
   const toggleRead = async (msg) => {
+    setActionError('')
     const next = !msg.read
     setMessages(prev => prev.map(m => (m.id === msg.id ? { ...m, read: next } : m)))
     try {
       await api(`/api/messages/${msg.id}`, { method: 'PUT', auth: true, body: { read: next } })
+      notifyUnreadChanged()
     } catch (err) {
+      // Roll back the optimistic flip and show the error inline.
       setMessages(prev => prev.map(m => (m.id === msg.id ? { ...m, read: !next } : m)))
-      alert(err.message)
+      setActionError(err.message)
     }
   }
 
   const handleDelete = async (msg) => {
+    setActionError('')
     if (!confirm(`Delete the message from ${msg.name}?`)) return
     try {
       await api(`/api/messages/${msg.id}`, { method: 'DELETE', auth: true })
       setMessages(prev => prev.filter(m => m.id !== msg.id))
+      notifyUnreadChanged()
     } catch (err) {
-      alert(err.message)
+      setActionError(err.message)
     }
   }
 
@@ -72,6 +80,14 @@ export default function ContactManagement() {
         {error && (
           <div className="text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
             {error}
+          </div>
+        )}
+        {actionError && (
+          <div className="flex items-center justify-between text-red-300 text-sm bg-red-400/10 border border-red-400/30 rounded-lg px-3 py-2">
+            <span>{actionError}</span>
+            <button type="button" onClick={() => setActionError('')} className="ml-3 text-slate-400 hover:text-white" aria-label="Dismiss error">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 

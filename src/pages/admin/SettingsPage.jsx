@@ -1,15 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Lock, Save, X, Check } from 'lucide-react'
+import { Bell, Lock, X, Check, Info } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { api, isOfflineError } from '../../api.js'
-
-const SETTINGS_KEY = 'admin_settings'
-const DEFAULT_SETTINGS = { notifications: true, emailAlerts: true }
+import { PREFS_EVENT, readPrefs, savePrefs } from '../../adminPrefs.js'
 
 export default function SettingsPage() {
-  const [notifications, setNotifications] = useState(DEFAULT_SETTINGS.notifications)
-  const [emailAlerts, setEmailAlerts] = useState(DEFAULT_SETTINGS.emailAlerts)
+  // Real preferences — see src/adminPrefs.js for what each one controls.
+  const [prefs, setPrefs] = useState(() => readPrefs())
   const [status, setStatus] = useState('')
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -17,24 +15,17 @@ export default function SettingsPage() {
   const [savingPw, setSavingPw] = useState(false)
 
   useEffect(() => {
-    try {
-      const stored = JSON.parse(window.localStorage?.getItem(SETTINGS_KEY) || 'null')
-      if (stored) {
-        setNotifications(Boolean(stored.notifications))
-        setEmailAlerts(Boolean(stored.emailAlerts))
-      }
-    } catch {
-      /* ignore corrupt stored settings */
-    }
+    const sync = (event) => setPrefs(event.detail || readPrefs())
+    window.addEventListener(PREFS_EVENT, sync)
+    return () => window.removeEventListener(PREFS_EVENT, sync)
   }, [])
 
-  const handleSave = () => {
-    try {
-      window.localStorage?.setItem(SETTINGS_KEY, JSON.stringify({ notifications, emailAlerts }))
-      setStatus('✓ Settings saved on this device.')
-    } catch {
-      setStatus('✗ Could not save settings (storage unavailable).')
-    }
+  // Each toggle saves immediately — no fake "Save" button that only
+  // writes to this browser without affecting anything else.
+  const toggle = (key, label) => () => {
+    const next = savePrefs({ [key]: !prefs[key] })
+    setPrefs(next)
+    setStatus(`✓ ${label} ${next[key] ? 'enabled' : 'disabled'} on this device.`)
   }
 
   const handleChangePassword = async (e) => {
@@ -61,10 +52,7 @@ export default function SettingsPage() {
     }
   }
 
-  const toggle = (value, setter) => () => setter(!value)
-
-  return (
-    <AdminLayout currentPage="Settings">
+  return (    <AdminLayout currentPage="Settings">
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Settings</h1>
@@ -92,41 +80,42 @@ export default function SettingsPage() {
           >
             <div className="flex items-center gap-2 mb-4">
               <Bell className="w-5 h-5 text-cyan-400" />
-              <h2 className="text-xl font-semibold text-white">Local preferences</h2>
+              <h2 className="text-xl font-semibold text-white">Preferences</h2>
             </div>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white">Dashboard notification preference</p>
-                  <p className="text-sm text-slate-400">Saved for this browser; push notifications are not configured.</p>
+                  <p className="text-white">Unread message badge</p>
+                  <p className="text-sm text-slate-400">Shows the red count on “Messages” and the bell dot in the admin header.</p>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={notifications}
-                  aria-label="Toggle push notifications"
-                  onClick={toggle(notifications, setNotifications)}
-                  className={`w-12 h-6 rounded-full transition-colors ${notifications ? 'bg-blue-600' : 'bg-slate-600'}`}
+                  aria-checked={prefs.unreadBadge}
+                  aria-label="Toggle unread message badge"
+                  onClick={toggle('unreadBadge', 'Unread message badge')}
+                  className={`w-12 h-6 shrink-0 rounded-full transition-colors ${prefs.unreadBadge ? 'bg-blue-600' : 'bg-slate-600'}`}
                 >
-                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${notifications ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
+                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${prefs.unreadBadge ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
                 </button>
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white">Email alert preference</p>
-                  <p className="text-sm text-slate-400">Saved for this browser; email delivery is not configured.</p>
+                  <p className="text-white">Reduce motion</p>
+                  <p className="text-sm text-slate-400">Turns off interface animations site-wide on this device.</p>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={emailAlerts}
-                  aria-label="Toggle email alerts"
-                  onClick={toggle(emailAlerts, setEmailAlerts)}
-                  className={`w-12 h-6 rounded-full transition-colors ${emailAlerts ? 'bg-blue-600' : 'bg-slate-600'}`}
+                  aria-checked={prefs.reduceMotion}
+                  aria-label="Toggle reduced motion"
+                  onClick={toggle('reduceMotion', 'Reduce motion')}
+                  className={`w-12 h-6 shrink-0 rounded-full transition-colors ${prefs.reduceMotion ? 'bg-blue-600' : 'bg-slate-600'}`}
                 >
-                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${emailAlerts ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
+                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${prefs.reduceMotion ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
                 </button>
               </div>
+              <p className="text-xs text-slate-500">Changes apply immediately and are saved on this device.</p>
             </div>
           </motion.div>
 
@@ -149,26 +138,28 @@ export default function SettingsPage() {
                 <p className="text-white">Change Password</p>
                 <p className="text-sm text-slate-400">Update your admin password</p>
               </button>
-              <div
-                className="w-full text-left p-3 bg-[#050B18] border border-blue-500/30 rounded-lg opacity-60 cursor-not-allowed"
-                title="Two-factor authentication is not available in this build yet"
-              >
-                <p className="text-white">Two-Factor Authentication</p>
-                <p className="text-sm text-slate-400">Not available yet — coming in a future update</p>
+              <div className="w-full p-3 bg-[#050B18] border border-blue-500/30 rounded-lg">
+                <div className="flex items-center gap-2 text-slate-300">
+                  <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <p className="text-white">Two-Factor Authentication</p>
+                </div>
+                <p className="text-sm text-slate-400 mt-1">
+                  Not available yet — the API does not support 2FA. Use a unique password of 12+ characters instead.
+                </p>
               </div>
             </div>
           </motion.div>
         </div>
 
-        <motion.button
-          onClick={handleSave}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg font-medium"
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="text-sm text-slate-400"
         >
-          <Save className="w-5 h-5" />
-          Save Settings
-        </motion.button>
+          Preferences are stored locally in this browser. Content, projects and
+          accounts are saved on the server.
+        </motion.div>
       </div>
 
       <AnimatePresence>

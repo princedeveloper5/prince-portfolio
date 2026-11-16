@@ -223,16 +223,15 @@ export default function ProjectsManagement() {
       await api(`/api/projects/${project.id}`, { method: 'DELETE', auth: true })
       setProjects(prev => prev.filter(p => p.id !== project.id))
     } catch (error) {
-      alert(error.message)
+      // Show inline under the header instead of a blocking alert().
+      setListError(error.message)
     }
   }
 
+  // "View" opens THIS project's public detail page (drafts included when
+  // signed in), where the live demo / GitHub links live.
   const handleView = (project) => {
-    if (project.liveDemoUrl) {
-      window.open(project.liveDemoUrl, '_blank', 'noopener')
-    } else {
-      window.open('/#/projects', '_blank', 'noopener')
-    }
+    navigate(`/projects/${project.id}`)
   }
 
   return (

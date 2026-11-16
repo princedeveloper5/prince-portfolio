@@ -448,3 +448,29 @@ html[data-theme='light'] .back-to-top:hover {
     transform: none !important;
   }
 }
+
+/* Same switch, driven by the admin Settings > Reduce motion toggle
+   (see src/adminPrefs.js). Applies site-wide on this device. */
+html[data-motion='reduced'] {
+  scroll-behavior: auto;
+}
+
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-motion='reduced'] .reveal,
+html[data-motion='reduced'] .hero-rise,
+html[data-motion='reduced'] .hero-fade {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+html[data-motion='reduced'] .hover-lift:hover {
+  transform: none !important;
+}
