@@ -7,14 +7,15 @@ const sqlite3 = require('sqlite3').verbose();
 if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
   throw new Error('Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN before migrating.');
 }
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before migrating uploads.');
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!process.env.SUPABASE_URL || !supabaseKey) {
+  throw new Error('Set SUPABASE_URL and SUPABASE_SECRET_KEY before migrating uploads.');
 }
 
 const { createClient } = require('@libsql/client');
 const { createClient: createSupabaseClient } = require('@supabase/supabase-js');
 const remoteDb = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
-const supabase = createSupabaseClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+const supabase = createSupabaseClient(process.env.SUPABASE_URL, supabaseKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'portfolio-uploads';

@@ -16,7 +16,7 @@ const db = require('./database.cjs');
 const cloudStorage = require('./cloud-storage.cjs');
 
 if (process.env.NODE_ENV === 'production' && (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN || !cloudStorage.enabled)) {
-  throw new Error('Production requires TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+  throw new Error('Production requires TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, SUPABASE_URL and SUPABASE_SECRET_KEY.');
 }
 
 const app = express();

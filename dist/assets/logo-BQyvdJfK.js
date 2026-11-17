@@ -1,0 +1,1 @@
+var e=`/assets/logo-DiVxL602.png`;export{e as t};

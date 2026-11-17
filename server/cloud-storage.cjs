@@ -1,9 +1,10 @@
 const crypto = require('crypto');
 
-const enabled = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const enabled = Boolean(process.env.SUPABASE_URL && supabaseKey);
 const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'portfolio-uploads';
 const client = enabled
-  ? require('@supabase/supabase-js').createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  ? require('@supabase/supabase-js').createClient(process.env.SUPABASE_URL, supabaseKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
   : null;
