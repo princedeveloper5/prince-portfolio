@@ -14,8 +14,9 @@ if (!process.env.SUPABASE_URL || !supabaseKey) {
 
 const { createClient } = require('@libsql/client');
 const { createClient: createSupabaseClient } = require('@supabase/supabase-js');
+const { getProjectUrl } = require('../server/supabase-url.cjs');
 const remoteDb = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
-const supabase = createSupabaseClient(process.env.SUPABASE_URL, supabaseKey, {
+const supabase = createSupabaseClient(getProjectUrl(process.env.SUPABASE_URL), supabaseKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'portfolio-uploads';

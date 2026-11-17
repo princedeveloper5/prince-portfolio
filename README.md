@@ -84,7 +84,7 @@ Local development stores data in `portfolio.db` and uploaded images in `server/u
 Vercel serves the frontend and forwards `/api/*` and `/uploads/*` to the Express service on Render. Render's free web service has an ephemeral filesystem and sleeps after inactivity, so the API stores its database in Turso and its uploaded images in Supabase Storage. Both services have free plans; free tiers have usage limits, and Render may take up to a minute to wake after it has been idle. See [Render's free service limits](https://render.com/docs/free) and [Supabase's free plan](https://supabase.com/pricing).
 
 1. Create a Turso database and an authentication token. Keep `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` handy.
-2. Create a Supabase project. Keep its project URL and server-only Secret API key (`sb_secret_...`) handy. Never put this key in frontend code or commit it. The API creates a public `portfolio-uploads` bucket automatically for portfolio images.
+2. Create a Supabase project. Keep its root project URL (for example, `https://your-project.supabase.co`, without `/rest/v1`) and server-only Secret API key (`sb_secret_...`) handy. Never put this key in frontend code or commit it. The API creates a public `portfolio-uploads` bucket automatically for portfolio images.
 3. In Render, create a Blueprint from this GitHub repository and apply `render.yaml`. Enter the Turso and Supabase values when Render prompts for the service's environment, then set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (at least 12 characters). Render generates `JWT_SECRET`.
 4. Confirm the Render URL is `https://prince-portfolio-api.onrender.com`. If it differs, update the API and uploads destinations in `vercel.json`.
 5. Deploy these changes through GitHub so Vercel picks up `vercel.json`.
