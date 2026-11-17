@@ -27,9 +27,49 @@ body {
   filter: drop-shadow(0 18px 44px rgba(0, 0, 0, 0.35));
 }
 
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.055) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: linear-gradient(to bottom, black 0%, rgba(0, 0, 0, 0.45) 58%, transparent 100%);
+}
+
+.hero-social-link {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(71, 85, 105, 0.48);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.38);
+  padding: 0 11px;
+  color: #cbd5e1;
+  font-size: 13px;
+  transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
+}
+
+.hero-social-link:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.08);
+  color: #38bdf8;
+}
+
 html[data-theme='light'] .hero-portrait {
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 68%, rgba(0, 0, 0, 0.72) 82%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 0%, #000 68%, rgba(0, 0, 0, 0.72) 82%, transparent 100%);
+}
+
+html[data-theme='light'] .hero-grid {
+  background-image:
+    linear-gradient(rgba(14, 116, 144, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14, 116, 144, 0.055) 1px, transparent 1px);
+}
+
+html[data-theme='light'] .hero-social-link {
+  border-color: rgba(148, 163, 184, 0.48);
+  background: rgba(255, 255, 255, 0.64);
+  color: #3d4a61;
 }
 
 @layer components {
@@ -210,10 +250,41 @@ html[data-theme='light'] .hero-portrait {
   border-bottom-color: rgba(51, 65, 85, 0.85);
 }
 
+.nav-shell > .max-w-7xl {
+  position: relative;
+  z-index: 2;
+}
+
+.nav-icon-button {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(71, 85, 105, 0.45);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.62);
+  color: #cbd5e1;
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.nav-icon-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+}
+
+.nav-icon-button:focus-visible,
+.nav-mobile-social:focus-visible {
+  outline: 2px solid #19c8ff;
+  outline-offset: 3px;
+}
+
 /* Active/hover indicator that grows under a nav link. */
 .nav-link {
   position: relative;
-  padding-bottom: 4px;
 }
 
 .nav-link::after {
@@ -237,14 +308,49 @@ html[data-theme='light'] .hero-portrait {
 
 /* Mobile menu: panel drops in, items stagger behind it. */
 .mobile-menu {
+  position: absolute;
+  z-index: 3;
+  top: 100%;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.65);
+  background: rgba(10, 14, 39, 0.98);
+  box-shadow: 0 24px 48px -30px rgba(2, 11, 22, 0.9);
   transform-origin: 50% 0;
   animation: mobile-menu-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mobile-menu-backdrop {
+  position: fixed;
+  z-index: 1;
+  inset: 76px 0 0;
+  width: 100%;
+  border: 0;
+  background: rgba(2, 6, 23, 0.52);
+  cursor: default;
 }
 
 .mobile-menu__item {
   opacity: 0;
   animation: mobile-item-in 340ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   animation-delay: var(--menu-delay, 0ms);
+}
+
+.nav-mobile-social {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(71, 85, 105, 0.45);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.nav-mobile-social:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
 }
 
 @keyframes mobile-menu-in {
@@ -416,6 +522,27 @@ html[data-theme='light'] .back-to-top {
 
 html[data-theme='light'] .back-to-top:hover {
   background-color: rgba(14, 165, 233, 0.14);
+}
+
+html[data-theme='light'] .nav-icon-button {
+  border-color: rgba(148, 163, 184, 0.45);
+  background-color: rgba(255, 255, 255, 0.78);
+  color: #475569;
+}
+
+html[data-theme='light'] .mobile-menu {
+  border-bottom-color: #d3dcea;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 24px 48px -30px rgba(71, 85, 105, 0.36);
+}
+
+html[data-theme='light'] .mobile-menu-backdrop {
+  background: rgba(15, 23, 42, 0.24);
+}
+
+html[data-theme='light'] .nav-mobile-social {
+  border-color: #d3dcea;
+  color: #3d4a61;
 }
 
 /* ============================================================
