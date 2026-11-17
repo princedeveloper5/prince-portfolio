@@ -24,15 +24,39 @@ const source = new sqlite3.Database(path.join(__dirname, '..', 'portfolio.db'));
 const tables = ['users', 'password_reset_tokens', 'projects', 'skills', 'home_content', 'about_content', 'visit_days', 'messages', 'counters'];
 const localAll = (sql) => new Promise((resolve, reject) => source.all(sql, (error, rows) => error ? reject(error) : resolve(rows)));
 const quote = (identifier) => `"${identifier.replace(/"/g, '""')}"`;
+let currentStep = 'initializing migration';
+const isTransientNetworkError = (error) =>
+  error?.message === 'fetch failed' ||
+  ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN'].includes(error?.cause?.code) ||
+  [429, 500, 502, 503, 504].includes(error?.statusCode || error?.status);
+
+async function uploadWithRetry(name, file, options, attempts = 3) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const { error } = await supabase.storage.from(bucket).upload(name, file, options);
+      if (!error) return;
+      if (!isTransientNetworkError(error) || attempt === attempts) throw error;
+    } catch (error) {
+      if (!isTransientNetworkError(error) || attempt === attempts) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+    console.warn(`Temporary storage connection issue; retrying upload (${attempt + 1}/${attempts})...`);
+  }
+}
 
 async function main() {
+  currentStep = 'checking Supabase Storage bucket';
   const { data: existing, error: bucketError } = await supabase.storage.getBucket(bucket);
-  if (bucketError || !existing) {
+  const bucketMissing = bucketError && String(bucketError.statusCode) === '404';
+  if (bucketError && !bucketMissing) throw bucketError;
+  if (!existing) {
+    currentStep = 'creating Supabase Storage bucket';
     const created = await supabase.storage.createBucket(bucket, { public: true, fileSizeLimit: 10 * 1024 * 1024 });
     if (created.error && !/already exists/i.test(created.error.message)) throw created.error;
   }
 
   for (const table of tables) {
+    currentStep = `migrating table ${table} to Turso`;
     const rows = await localAll(`SELECT * FROM ${quote(table)}`);
     if (!rows.length) continue;
     const columns = await localAll(`PRAGMA table_info(${quote(table)})`);
@@ -54,11 +78,15 @@ async function main() {
   for (const name of fs.readdirSync(uploadDir)) {
     const fullPath = path.join(uploadDir, name);
     if (!fs.statSync(fullPath).isFile()) continue;
-    const { error } = await supabase.storage.from(bucket).upload(name, fs.readFileSync(fullPath), {
-      contentType: contentTypes[path.extname(name).toLowerCase()] || 'application/octet-stream',
-      upsert: true,
-    });
-    if (error) throw error;
+    currentStep = `uploading ${name} to Supabase Storage`;
+    try {
+      await uploadWithRetry(name, fs.readFileSync(fullPath), {
+        contentType: contentTypes[path.extname(name).toLowerCase()] || 'application/octet-stream',
+        upsert: true,
+      });
+    } catch (error) {
+      throw new Error(`Supabase Storage upload failed for ${name}: ${error.message}`, { cause: error });
+    }
     console.log(`Uploaded ${name}`);
   }
   await remoteDb.close();
@@ -66,6 +94,10 @@ async function main() {
 }
 
 main().catch((error) => {
+  let cause = error;
+  for (let depth = 0; depth < 5 && cause && !cause.code; depth += 1) cause = cause.cause;
+  console.error(`Failed during: ${currentStep}`);
   console.error('Migration failed:', error.message);
+  if (cause?.code) console.error('Network detail:', cause.code);
   process.exitCode = 1;
 });

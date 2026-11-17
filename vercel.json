@@ -2,6 +2,7 @@
   "rewrites": [
     { "source": "/api", "destination": "https://prince-portfolio-api-t8d8.onrender.com/api" },
     { "source": "/api/:path*", "destination": "https://prince-portfolio-api-t8d8.onrender.com/api/:path*" },
-    { "source": "/uploads/:path*", "destination": "https://prince-portfolio-api-t8d8.onrender.com/uploads/:path*" }
+    { "source": "/uploads/:path*", "destination": "https://prince-portfolio-api-t8d8.onrender.com/uploads/:path*" },
+    { "source": "/((?!api/|uploads/).*)", "destination": "/index.html" }
   ]
 }
