@@ -2,22 +2,31 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { api, getToken, setToken } from './api.js'
 
 const AuthContext = createContext(null)
+const readStoredUser = () => {
+  try { return window.localStorage?.getItem('admin_user') || '' } catch { return '' }
+}
+const clearStoredUser = () => {
+  try { window.localStorage?.removeItem('admin_user') } catch { /* in-memory session can still be cleared */ }
+}
+const writeStoredUser = (userData) => {
+  try { window.localStorage?.setItem('admin_user', JSON.stringify(userData)) } catch { /* keep this session in memory */ }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('admin_user')
+    const storedUser = readStoredUser()
     const token = getToken()
     if (token === 'offline-session') {
-      localStorage.removeItem('admin_user')
+      clearStoredUser()
       setToken('')
     } else if (storedUser && token) {
       try {
         setUser(JSON.parse(storedUser))
       } catch {
-        localStorage.removeItem('admin_user')
+        clearStoredUser()
         setToken('')
       }
     } else if (!storedUser) {
@@ -31,7 +40,7 @@ export function AuthProvider({ children }) {
     const onExpired = () => {
       setUser(null)
       setToken('')
-      localStorage.removeItem('admin_user')
+      clearStoredUser()
     }
     window.addEventListener('auth-expired', onExpired)
     return () => window.removeEventListener('auth-expired', onExpired)
@@ -39,12 +48,19 @@ export function AuthProvider({ children }) {
 
   const persistSession = (token, userData) => {
     setToken(token)
-    localStorage.setItem('admin_user', JSON.stringify(userData))
+    writeStoredUser(userData)
     setUser(userData)
   }
 
   const login = async (email, password) => {
     const data = await api('/api/login', { method: 'POST', body: { email, password } })
+    if (data.requiresTwoFactor) return data
+    persistSession(data.token, data.user)
+    return { success: true }
+  }
+
+  const verifyTwoFactor = async (challengeId, code) => {
+    const data = await api('/api/login/verify', { method: 'POST', body: { challengeId, code } })
     persistSession(data.token, data.user)
     return { success: true }
   }
@@ -52,7 +68,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     setUser(null)
     setToken('')
-    localStorage.removeItem('admin_user')
+    clearStoredUser()
   }
 
   const forgotPassword = async (email) => {
@@ -60,7 +76,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, forgotPassword, loading, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, verifyTwoFactor, logout, forgotPassword, loading, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   )

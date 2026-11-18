@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
-import { HashRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import { AuthProvider } from './AuthContext.jsx'
 import './index.css'
@@ -10,6 +10,12 @@ import { useAppReady } from './hooks/useAppReady.js'
 
 // Applies the saved "reduce motion" preference before the first render.
 initPrefs()
+
+// Keep existing shared/bookmarked hash URLs working after switching to
+// normal paths (for example, /#/projects/12 -> /projects/12).
+if (window.location.hash.startsWith('#/')) {
+  window.history.replaceState(null, '', `${window.location.hash.slice(1)}${window.location.search}`)
+}
 
 function Root() {
   const { ready, error, retry, markContentLoaded, markContentError } = useAppReady({
@@ -31,15 +37,17 @@ function Root() {
 
   return (
     <>
-      <HashRouter>
+      <BrowserRouter>
         <AuthProvider>
           <App onContentLoaded={markContentLoaded} onContentError={markContentError} />
         </AuthProvider>
-      </HashRouter>
+      </BrowserRouter>
       <PageLoader ready={ready} error={error} onRetry={handleRetry} />
     </>
   )
 }
+
+document.getElementById('root').tabIndex = -1
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

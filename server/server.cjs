@@ -11,6 +11,8 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const dns = require('node:dns').promises;
+const { domainToASCII } = require('node:url');
 const nodemailer = require('nodemailer');
 const db = require('./database.cjs');
 const cloudStorage = require('./cloud-storage.cjs');
@@ -127,7 +129,7 @@ const handleUploads = (req, res, next) => upload.any()(req, res, async (error) =
   } catch (uploadError) { next(uploadError); }
 });
 const uploadCv = multer({
-  storage: multer.diskStorage({
+  storage: cloudStorage.enabled ? multer.memoryStorage() : multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
     filename: (req, file, cb) => cb(null, `cv-${Date.now()}-${Math.round(Math.random() * 1e6)}.pdf`),
   }),
@@ -147,7 +149,8 @@ const all = (sql, params = []) =>
 
 const asyncRoute = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((err) => {
   console.error('[api]', req.method, req.originalUrl, err.message);
-  if (!res.headersSent) res.status(500).json({ error: err.message || 'Server error' });
+  const status = Number(err.status || err.statusCode) || 500;
+  if (!res.headersSent) res.status(status).json({ error: err.publicMessage || (status >= 500 ? 'Server error. Please try again later.' : err.message || 'Invalid request.') });
 });
 
 const parseTechnologies = (value) => {
@@ -231,6 +234,8 @@ const aboutToJson = (row) =>
         githubUrl: row.github_url || '',
         linkedinUrl: row.linkedin_url || '',
         twitterUrl: row.twitter_url || '',
+        instagramUrl: row.instagram_url || '',
+        facebookUrl: row.facebook_url || '',
       }
     : null;
 
@@ -275,6 +280,12 @@ function hasValidImageSignature(file) {
   return png || jpeg || gif || webp;
 }
 
+function hasValidPdfSignature(file) {
+  if (!file) return false;
+  const bytes = file.buffer || fs.readFileSync(file.path);
+  return bytes.length >= 5 && bytes.subarray(0, 5).toString('ascii') === '%PDF-';
+}
+
 // ---------- auth ----------
 async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -282,8 +293,9 @@ async function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Authentication required' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await get('SELECT id, email, name, role FROM users WHERE id = ?', [decoded.id]);
+    const user = await get('SELECT id, email, name, role, session_version FROM users WHERE id = ?', [decoded.id]);
     if (!user) return res.status(401).json({ error: 'This account is no longer active. Please sign in again.' });
+    if ((decoded.sessionVersion || 0) !== user.session_version) return res.status(401).json({ error: 'Your security settings changed. Please sign in again.' });
     req.user = user;
     next();
   } catch (error) {
@@ -306,12 +318,21 @@ db.serialize(() => {
     email TEXT UNIQUE,
     password TEXT,
     name TEXT,
-    role TEXT DEFAULT 'admin'
+    role TEXT DEFAULT 'admin',
+    session_version INTEGER NOT NULL DEFAULT 0
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
     user_id INTEGER PRIMARY KEY,
     token_hash TEXT NOT NULL,
     expires_at INTEGER NOT NULL
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS two_factor_challenges (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    purpose TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -332,7 +353,7 @@ db.serialize(() => {
     name TEXT,
     category TEXT,
     level INTEGER,
-    is_public INTEGER NOT NULL DEFAULT 0
+    is_public INTEGER NOT NULL DEFAULT 1
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS home_content (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -360,6 +381,8 @@ db.serialize(() => {
     github_url TEXT DEFAULT '',
     linkedin_url TEXT DEFAULT '',
     twitter_url TEXT DEFAULT '',
+    instagram_url TEXT DEFAULT '',
+    facebook_url TEXT DEFAULT '',
     experience TEXT DEFAULT '',
     interests TEXT DEFAULT '',
     career_goals TEXT DEFAULT '',
@@ -399,6 +422,12 @@ const seedData = async () => {
   if (!userColumns.some((column) => column.name === 'last_login')) {
     await run('ALTER TABLE users ADD COLUMN last_login TEXT');
   }
+  if (!userColumns.some((column) => column.name === 'mfa_enabled')) {
+    await run('ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!userColumns.some((column) => column.name === 'session_version')) {
+    await run('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
+  }
 
   const projectColumns = await all('PRAGMA table_info(projects)');
   const existingProjectColumns = new Set(projectColumns.map((column) => column.name));
@@ -408,7 +437,13 @@ const seedData = async () => {
 
   const skillColumns = await all('PRAGMA table_info(skills)');
   if (!skillColumns.some((column) => column.name === 'is_public')) {
-    await run('ALTER TABLE skills ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0');
+    await run('ALTER TABLE skills ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1');
+  }
+  await run('CREATE TABLE IF NOT EXISTS app_migrations (name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+  const skillVisibilityMigration = await get('SELECT name FROM app_migrations WHERE name = ?', ['skills_publication_v1']);
+  if (!skillVisibilityMigration) {
+    await run('UPDATE skills SET is_public = 1 WHERE is_public = 0');
+    await run('INSERT INTO app_migrations (name) VALUES (?)', ['skills_publication_v1']);
   }
 
   const homeColumns = await all('PRAGMA table_info(home_content)');
@@ -431,6 +466,8 @@ const seedData = async () => {
     ['github_url', "TEXT DEFAULT ''"],
     ['linkedin_url', "TEXT DEFAULT ''"],
     ['twitter_url', "TEXT DEFAULT ''"],
+    ['instagram_url', "TEXT DEFAULT ''"],
+    ['facebook_url', "TEXT DEFAULT ''"],
     ['experience', "TEXT DEFAULT ''"],
     ['interests', "TEXT DEFAULT ''"],
     ['career_goals', "TEXT DEFAULT ''"],
@@ -475,7 +512,7 @@ const seedData = async () => {
 
   await seedIfEmpty(
     'skills',
-    'INSERT INTO skills (name, category, level) VALUES (?, ?, ?)',
+    'INSERT INTO skills (name, category, level, is_public) VALUES (?, ?, ?, 1)',
     [
       ['React', 'Frontend', 90],
       ['JavaScript', 'Frontend', 95],
@@ -529,6 +566,77 @@ const seedData = async () => {
 const startupReady = seedData();
 
 // ---------- auth routes ----------
+const hashEmailCode = (userId, purpose, code) => crypto
+  .createHmac('sha256', JWT_SECRET)
+  .update(`${userId}:${purpose}:${code}`)
+  .digest('hex');
+
+async function sendEmailCode(user, purpose) {
+  if (!mailer) {
+    const error = new Error('Email verification is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS, then restart the server.');
+    error.status = 503;
+    throw error;
+  }
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  const id = crypto.randomBytes(24).toString('hex');
+  await run('DELETE FROM two_factor_challenges WHERE user_id = ? AND purpose = ?', [user.id, purpose]);
+  await run('INSERT INTO two_factor_challenges (id, user_id, purpose, code_hash, expires_at) VALUES (?, ?, ?, ?, ?)', [
+    id, user.id, purpose, hashEmailCode(user.id, purpose, code), Date.now() + 10 * 60 * 1000,
+  ]);
+  try {
+    await mailer.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: user.email,
+      subject: purpose === 'login' ? 'Your portfolio admin sign-in code' : 'Verify two-factor authentication',
+      text: `Your verification code is ${code}. It expires in 10 minutes. If you did not request this code, you can ignore this email.`,
+    });
+  } catch (error) {
+    await run('DELETE FROM two_factor_challenges WHERE id = ?', [id]);
+    error.status = 502;
+    error.publicMessage = 'The verification email could not be sent. Check your email settings and try again.';
+    throw error;
+  }
+  return id;
+}
+
+async function verifyEmailCode(id, userId, purpose, value) {
+  const challenge = await get('SELECT * FROM two_factor_challenges WHERE id = ? AND user_id = ? AND purpose = ?', [id, userId, purpose]);
+  if (!challenge || challenge.expires_at <= Date.now()) {
+    if (challenge) await run('DELETE FROM two_factor_challenges WHERE id = ?', [id]);
+    return { valid: false, error: 'That code has expired. Request a new one.' };
+  }
+  if (challenge.attempts >= 5) {
+    await run('DELETE FROM two_factor_challenges WHERE id = ?', [id]);
+    return { valid: false, error: 'Too many incorrect codes. Request a new one.' };
+  }
+  const code = String(value || '').trim();
+  const expected = Buffer.from(challenge.code_hash, 'hex');
+  const supplied = Buffer.from(hashEmailCode(userId, purpose, code), 'hex');
+  if (!/^\d{6}$/.test(code) || expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+    const attempts = challenge.attempts + 1;
+    if (attempts >= 5) await run('DELETE FROM two_factor_challenges WHERE id = ?', [id]);
+    else await run('UPDATE two_factor_challenges SET attempts = ? WHERE id = ?', [attempts, id]);
+    return { valid: false, error: attempts >= 5 ? 'Too many incorrect codes. Request a new one.' : `That code is incorrect. ${5 - attempts} attempts remaining.` };
+  }
+  await run('DELETE FROM two_factor_challenges WHERE id = ?', [id]);
+  return { valid: true };
+}
+
+async function createAuthSession(user, recordLogin = true) {
+  const token = jwt.sign(
+    { id: user.id, email: user.email, name: user.name, role: user.role, sessionVersion: user.session_version || 0 },
+    JWT_SECRET,
+    { expiresIn: '7d' },
+  );
+  if (recordLogin) {
+    await run('UPDATE users SET last_login = ? WHERE id = ?', [
+      new Date().toISOString().slice(0, 19).replace('T', ' '), user.id,
+    ]);
+  }
+  const fresh = await get('SELECT id, name, email, role, last_login FROM users WHERE id = ?', [user.id]);
+  return { token, user: userToJson(fresh) };
+}
+
 app.post('/api/login', limitRequests({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many login attempts. Try again in 15 minutes.' }), asyncRoute(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
@@ -537,26 +645,55 @@ app.post('/api/login', limitRequests({ windowMs: 15 * 60 * 1000, max: 10, messag
   if (!user || !(await bcrypt.compare(String(password), user.password))) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
-
-  const token = jwt.sign(
-    { id: user.id, email: user.email, name: user.name, role: user.role },
-    JWT_SECRET,
-    { expiresIn: '7d' },
-  );
-
-  // Record the sign-in so the admin Users table can show a real
-  // "last active" value instead of a hardcoded status.
-  try {
-    await run('UPDATE users SET last_login = ? WHERE id = ?', [
-      new Date().toISOString().slice(0, 19).replace('T', ' '),
-      user.id,
-    ]);
-  } catch {
-    /* non-critical: login still succeeds if the column is missing */
+  if (user.mfa_enabled) {
+    const challengeId = await sendEmailCode(user, 'login');
+    const [, domain = ''] = user.email.split('@');
+    const mailbox = user.email.split('@')[0];
+    const maskedEmail = `${mailbox.slice(0, 1)}${'*'.repeat(Math.max(2, mailbox.length - 1))}@${domain}`;
+    return res.json({ requiresTwoFactor: true, challengeId, maskedEmail });
   }
+  res.json(await createAuthSession(user));
+}));
 
-  const fresh = await get('SELECT id, name, email, role, last_login FROM users WHERE id = ?', [user.id]);
-  res.json({ token, user: userToJson(fresh) });
+app.post('/api/login/verify', limitRequests({ windowMs: 15 * 60 * 1000, max: 12, message: 'Too many verification attempts. Try again later.' }), asyncRoute(async (req, res) => {
+  const { challengeId, code } = req.body || {};
+  const challenge = await get("SELECT user_id FROM two_factor_challenges WHERE id = ? AND purpose = 'login'", [String(challengeId || '')]);
+  if (!challenge) return res.status(400).json({ error: 'That sign-in request is invalid or expired. Start again.' });
+  const verification = await verifyEmailCode(challengeId, challenge.user_id, 'login', code);
+  if (!verification.valid) return res.status(400).json({ error: verification.error });
+  const user = await get('SELECT id, email, name, role, session_version FROM users WHERE id = ?', [challenge.user_id]);
+  if (!user) return res.status(401).json({ error: 'This account is no longer available.' });
+  res.json(await createAuthSession(user));
+}));
+
+app.get('/api/security/2fa', requireAuth, asyncRoute(async (req, res) => {
+  const user = await get('SELECT email, mfa_enabled FROM users WHERE id = ?', [req.user.id]);
+  res.json({ enabled: Boolean(user?.mfa_enabled), emailConfigured: Boolean(mailer), email: user?.email || '' });
+}));
+
+app.post('/api/security/2fa/setup', requireAuth, limitRequests({ windowMs: 15 * 60 * 1000, max: 5, message: 'Too many verification codes requested. Try again later.' }), asyncRoute(async (req, res) => {
+  const user = await get('SELECT id, email FROM users WHERE id = ?', [req.user.id]);
+  const challengeId = await sendEmailCode(user, 'enable');
+  res.json({ challengeId, message: `A verification code was sent to ${user.email}. It expires in 10 minutes.` });
+}));
+
+app.post('/api/security/2fa/enable', requireAuth, asyncRoute(async (req, res) => {
+  const { challengeId, code } = req.body || {};
+  const verification = await verifyEmailCode(String(challengeId || ''), req.user.id, 'enable', code);
+  if (!verification.valid) return res.status(400).json({ error: verification.error });
+  await run('UPDATE users SET mfa_enabled = 1, session_version = session_version + 1 WHERE id = ?', [req.user.id]);
+  const user = await get('SELECT id, email, name, role, session_version FROM users WHERE id = ?', [req.user.id]);
+  res.json({ ...(await createAuthSession(user, false)), enabled: true });
+}));
+
+app.post('/api/security/2fa/disable', requireAuth, asyncRoute(async (req, res) => {
+  const password = String(req.body?.password || '');
+  const user = await get('SELECT password FROM users WHERE id = ?', [req.user.id]);
+  if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: 'Current password is incorrect.' });
+  await run('UPDATE users SET mfa_enabled = 0, session_version = session_version + 1 WHERE id = ?', [req.user.id]);
+  await run('DELETE FROM two_factor_challenges WHERE user_id = ?', [req.user.id]);
+  const freshUser = await get('SELECT id, email, name, role, session_version FROM users WHERE id = ?', [req.user.id]);
+  res.json({ ...(await createAuthSession(freshUser, false)), enabled: false });
 }));
 
 app.post('/api/password-reset/request', limitRequests({ windowMs: 15 * 60 * 1000, max: 5, message: 'Too many reset requests. Try again later.' }), asyncRoute(async (req, res) => {
@@ -606,8 +743,9 @@ async function optionalAuth(req, res, next) {
   if (!header.startsWith('Bearer ')) return next();
   try {
     const decoded = jwt.verify(header.slice(7), JWT_SECRET);
-    req.user = await get('SELECT id, email, name, role FROM users WHERE id = ?', [decoded.id]);
+    req.user = await get('SELECT id, email, name, role, session_version FROM users WHERE id = ?', [decoded.id]);
     if (!req.user) return res.status(401).json({ error: 'Session expired, please log in again' });
+    if ((decoded.sessionVersion || 0) !== req.user.session_version) return res.status(401).json({ error: 'Your security settings changed. Please sign in again.' });
     return next();
   } catch {
     return res.status(401).json({ error: 'Session expired, please log in again' });
@@ -624,7 +762,7 @@ app.get('/api/projects', optionalAuth, asyncRoute(async (req, res) => {
 app.get('/api/public/stats', asyncRoute(async (req, res) => {
   const [projects, skills, visits] = await Promise.all([
     get("SELECT COUNT(*) AS n FROM projects WHERE status = 'Published'"),
-    get('SELECT COUNT(*) AS n FROM skills'),
+    get('SELECT COUNT(*) AS n FROM skills WHERE is_public = 1'),
     get("SELECT value FROM counters WHERE key = 'visits'"),
   ]);
   res.json({ publishedProjects: projects.n, totalSkills: skills.n, totalVisits: visits?.value || 0 });
@@ -633,17 +771,19 @@ app.get('/api/public/stats', asyncRoute(async (req, res) => {
 app.post('/api/projects', requireAuth, handleUploads, asyncRoute(async (req, res) => {
   const file = findUploadedFile(req);
   if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
-  const { title, description, technologies, liveDemoUrl, githubUrl, category, status } = req.body || {};
+  const { title, description, problem, features, technologies, liveDemoUrl, githubUrl, category, status } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'Project title is required' });
-  if (String(title).length > 180 || String(description || '').length > 10000) return res.status(400).json({ error: 'Project title or description is too long.' });
+  if (String(title).length > 180 || String(description || '').length > 10000 || String(problem || '').length > 10000 || String(features || '').length > 10000) return res.status(400).json({ error: 'Project content is too long.' });
   if (!isHttpUrl(liveDemoUrl) || !isHttpUrl(githubUrl)) return res.status(400).json({ error: 'Project links must use a valid HTTP or HTTPS URL.' });
 
   const info = await run(
-    `INSERT INTO projects (title, description, technologies, image_path, live_demo_url, github_url, category, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO projects (title, description, problem, features, technologies, image_path, live_demo_url, github_url, category, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       String(title).trim(),
       description || '',
+      problem || '',
+      features || '',
       JSON.stringify(parseTechnologies(technologies)),
       file ? file.filename : '',
       liveDemoUrl || '',
@@ -663,15 +803,17 @@ app.put('/api/projects/:id', requireAuth, handleUploads, asyncRoute(async (req, 
 
   if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
   const b = req.body || {};
-  if (String(b.title ?? existing.title).length > 180 || String(b.description ?? existing.description).length > 10000) return res.status(400).json({ error: 'Project title or description is too long.' });
+  if (String(b.title ?? existing.title).length > 180 || String(b.description ?? existing.description).length > 10000 || String(b.problem ?? existing.problem ?? '').length > 10000 || String(b.features ?? existing.features ?? '').length > 10000) return res.status(400).json({ error: 'Project content is too long.' });
   if (!isHttpUrl(b.liveDemoUrl ?? existing.live_demo_url) || !isHttpUrl(b.githubUrl ?? existing.github_url)) return res.status(400).json({ error: 'Project links must use a valid HTTP or HTTPS URL.' });
   const imagePath = file ? file.filename : (b.image !== undefined ? b.image : existing.image_path);
   await run(
-    `UPDATE projects SET title = ?, description = ?, technologies = ?, image_path = ?,
+    `UPDATE projects SET title = ?, description = ?, problem = ?, features = ?, technologies = ?, image_path = ?,
      live_demo_url = ?, github_url = ?, category = ?, status = ? WHERE id = ?`,
     [
       b.title !== undefined ? String(b.title).trim() : existing.title,
       b.description !== undefined ? b.description : existing.description,
+      b.problem !== undefined ? b.problem : existing.problem,
+      b.features !== undefined ? b.features : existing.features,
       b.technologies !== undefined ? JSON.stringify(parseTechnologies(b.technologies)) : existing.technologies,
       imagePath,
       b.liveDemoUrl !== undefined ? b.liveDemoUrl : existing.live_demo_url,
@@ -695,19 +837,20 @@ app.delete('/api/projects/:id', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 // ---------- skills ----------
-app.get('/api/skills', asyncRoute(async (req, res) => {
-  const rows = await all('SELECT * FROM skills ORDER BY id ASC');
+app.get('/api/skills', optionalAuth, asyncRoute(async (req, res) => {
+  const rows = await all(req.user ? 'SELECT * FROM skills ORDER BY id ASC' : 'SELECT * FROM skills WHERE is_public = 1 ORDER BY id ASC');
   res.json(rows.map(skillToJson));
 }));
 
 app.post('/api/skills', requireAuth, asyncRoute(async (req, res) => {
-  const { name, category, level } = req.body || {};
+  const { name, category, level, isPublic } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Skill name is required' });
   if (String(name).length > 80 || String(category || '').length > 80) return res.status(400).json({ error: 'Skill name or category is too long.' });
-  const info = await run('INSERT INTO skills (name, category, level) VALUES (?, ?, ?)', [
+  const info = await run('INSERT INTO skills (name, category, level, is_public) VALUES (?, ?, ?, ?)', [
     String(name).trim(),
     category || 'Tools',
     Number.isFinite(Number(level)) ? Math.max(0, Math.min(100, Number(level))) : 50,
+    isPublic === false ? 0 : 1,
   ]);
   const row = await get('SELECT * FROM skills WHERE id = ?', [info.lastID]);
   res.status(201).json(skillToJson(row));
@@ -718,10 +861,11 @@ app.put('/api/skills/:id', requireAuth, asyncRoute(async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Skill not found' });
   const b = req.body || {};
   if (String(b.name ?? existing.name).length > 80 || String(b.category ?? existing.category).length > 80) return res.status(400).json({ error: 'Skill name or category is too long.' });
-  await run('UPDATE skills SET name = ?, category = ?, level = ? WHERE id = ?', [
+  await run('UPDATE skills SET name = ?, category = ?, level = ?, is_public = ? WHERE id = ?', [
     b.name !== undefined && String(b.name).trim() ? String(b.name).trim() : existing.name,
     b.category !== undefined ? b.category : existing.category,
     b.level !== undefined ? Math.max(0, Math.min(100, Number(b.level) || 0)) : existing.level,
+    b.isPublic !== undefined ? (b.isPublic ? 1 : 0) : existing.is_public,
     existing.id,
   ]);
   const row = await get('SELECT * FROM skills WHERE id = ?', [existing.id]);
@@ -788,12 +932,33 @@ app.get('/api/about', asyncRoute(async (req, res) => {
   res.json(aboutToJson(row));
 }));
 
+app.post('/api/about/cv', requireAuth, (req, res, next) => uploadCv.single('cv')(req, res, async (error) => {
+  if (error) return next(error);
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'Choose a PDF file to upload.' });
+  try {
+    if (!hasValidPdfSignature(file)) {
+      removeUploadedFile(file.filename);
+      return res.status(400).json({ error: 'The uploaded file is not a valid PDF.' });
+    }
+    await cloudStorage.save(file);
+    const cvUrl = uploadPath(file.filename);
+    const existing = await get('SELECT id FROM about_content ORDER BY id ASC LIMIT 1');
+    if (existing) await run('UPDATE about_content SET cv_url = ? WHERE id = ?', [cvUrl, existing.id]);
+    else await run('INSERT INTO about_content (cv_url) VALUES (?)', [cvUrl]);
+    res.json({ cvUrl });
+  } catch (uploadError) {
+    removeUploadedFile(file.filename);
+    next(uploadError);
+  }
+}));
+
 app.put('/api/about', requireAuth, handleUploads, asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM about_content ORDER BY id ASC LIMIT 1');
   const b = req.body || {};
   const file = findUploadedFile(req);
   if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
-  for (const field of ['cvUrl', 'githubUrl', 'linkedinUrl', 'twitterUrl']) {
+  for (const field of ['cvUrl', 'githubUrl', 'linkedinUrl', 'twitterUrl', 'instagramUrl', 'facebookUrl']) {
     if (b[field] !== undefined && (!isHttpUrl(b[field]) || String(b[field]).length > 2048)) return res.status(400).json({ error: `${field} must be a valid HTTP or HTTPS URL.` });
   }
   if (String(b.name ?? '').length > 120 || String(b.title ?? '').length > 160 || String(b.experience ?? '').length > 120 || String(b.description ?? '').length > 12000) return res.status(400).json({ error: 'About content is too long.' });
@@ -801,7 +966,7 @@ app.put('/api/about', requireAuth, handleUploads, asyncRoute(async (req, res) =>
   if (existing) {
     await run(
       `UPDATE about_content SET name = ?, title = ?, experience = ?, description = ?, email = ?, phone = ?, location = ?,
-       cv_url = ?, github_url = ?, linkedin_url = ?, twitter_url = ?, portrait_image = ? WHERE id = ?`,
+       cv_url = ?, github_url = ?, linkedin_url = ?, twitter_url = ?, instagram_url = ?, facebook_url = ?, portrait_image = ? WHERE id = ?`,
       [
         b.name !== undefined ? b.name : existing.name,
         b.title !== undefined ? b.title : existing.title,
@@ -814,6 +979,8 @@ app.put('/api/about', requireAuth, handleUploads, asyncRoute(async (req, res) =>
         b.githubUrl !== undefined ? b.githubUrl : existing.github_url,
         b.linkedinUrl !== undefined ? b.linkedinUrl : existing.linkedin_url,
         b.twitterUrl !== undefined ? b.twitterUrl : existing.twitter_url,
+        b.instagramUrl !== undefined ? b.instagramUrl : existing.instagram_url,
+        b.facebookUrl !== undefined ? b.facebookUrl : existing.facebook_url,
         file ? file.filename : (b.portraitImage !== undefined ? b.portraitImage : existing.portrait_image),
         existing.id,
       ],
@@ -824,9 +991,9 @@ app.put('/api/about', requireAuth, handleUploads, asyncRoute(async (req, res) =>
   }
 
   const info = await run(
-    `INSERT INTO about_content (name, title, experience, description, email, phone, location, cv_url, github_url, linkedin_url, twitter_url, portrait_image)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.name || '', b.title || '', b.experience || '', b.description || '', b.email || '', b.phone || '', b.location || '', b.cvUrl || '', b.githubUrl || '', b.linkedinUrl || '', b.twitterUrl || '', file ? file.filename : (b.portraitImage || '')],
+    `INSERT INTO about_content (name, title, experience, description, email, phone, location, cv_url, github_url, linkedin_url, twitter_url, instagram_url, facebook_url, portrait_image)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.name || '', b.title || '', b.experience || '', b.description || '', b.email || '', b.phone || '', b.location || '', b.cvUrl || '', b.githubUrl || '', b.linkedinUrl || '', b.twitterUrl || '', b.instagramUrl || '', b.facebookUrl || '', file ? file.filename : (b.portraitImage || '')],
   );
   const row = await get('SELECT * FROM about_content WHERE id = ?', [info.lastID]);
   res.status(201).json(aboutToJson(row));
@@ -834,6 +1001,25 @@ app.put('/api/about', requireAuth, handleUploads, asyncRoute(async (req, res) =>
 
 // ---------- messages (POST is public — it's the contact form) ----------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emailDomainAcceptsMail = async (email) => {
+  const domain = domainToASCII(String(email).trim().split('@').pop().toLowerCase());
+  if (!domain) return false;
+  try {
+    const records = await dns.resolveMx(domain);
+    return records.some((record) => record.exchange && record.exchange !== '.');
+  } catch (error) {
+    if (error.code === 'ENODATA') {
+      // A domain without MX records can still receive mail via its A/AAAA record.
+      try { return (await dns.lookup(domain, { all: true })).length > 0; }
+      catch (lookupError) {
+        if (lookupError.code === 'ENOTFOUND') return false;
+        throw lookupError;
+      }
+    }
+    if (error.code === 'ENOTFOUND') return false;
+    throw error;
+  }
+};
 const isHttpUrl = (value) => {
   if (!value) return true;
   try { return ['http:', 'https:'].includes(new URL(String(value)).protocol); } catch { return false; }
@@ -842,15 +1028,25 @@ const isHttpUrl = (value) => {
 app.post('/api/messages', limitRequests({ windowMs: 15 * 60 * 1000, max: 6, message: 'Too many messages from this connection. Please try again later.' }), asyncRoute(async (req, res) => {
   const { name, email, message, subject } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
-  if (!email || !EMAIL_RE.test(String(email).trim())) return res.status(400).json({ error: 'A valid email is required' });
+  const cleanEmail = String(email || '').trim();
+  if (!cleanEmail || cleanEmail.length > 254 || !EMAIL_RE.test(cleanEmail)) return res.status(400).json({ error: 'Enter a valid email address.' });
   if (!message || !String(message).trim()) return res.status(400).json({ error: 'Message is required' });
-  if (String(name).length > 120 || String(email).length > 254 || String(message).length > 10000 || String(subject || '').length > 200) {
+  if (String(name).length > 120 || String(message).length > 10000 || String(subject || '').length > 200) {
     return res.status(400).json({ error: 'One or more message fields are too long.' });
   }
 
+  let emailDomainIsReachable;
+  try {
+    emailDomainIsReachable = await emailDomainAcceptsMail(cleanEmail);
+  } catch (error) {
+    console.warn('[mail] sender domain verification unavailable:', error.code || error.message);
+    return res.status(503).json({ error: 'We could not verify this email domain right now. Please try again shortly.' });
+  }
+  if (!emailDomainIsReachable) return res.status(400).json({ error: 'This email domain cannot receive mail. Please check the address and try again.' });
+
   const info = await run(
     'INSERT INTO messages (name, email, subject, message, read) VALUES (?, ?, ?, ?, 0)',
-    [String(name).trim(), String(email).trim(), subject ? String(subject).trim() : null, String(message).trim()],
+    [String(name).trim(), cleanEmail, subject ? String(subject).trim() : null, String(message).trim()],
   );
   const row = await get('SELECT * FROM messages WHERE id = ?', [info.lastID]);
   let emailNotificationSent = false;
@@ -859,9 +1055,9 @@ app.post('/api/messages', limitRequests({ windowMs: 15 * 60 * 1000, max: 6, mess
       await mailer.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
         to: process.env.CONTACT_TO,
-        replyTo: String(email).trim(),
+        replyTo: cleanEmail,
         subject: `Portfolio message: ${String(subject || 'New inquiry').trim()}`,
-        text: `From: ${String(name).trim()} <${String(email).trim()}>\n\n${String(message).trim()}`,
+        text: `From: ${String(name).trim()} <${cleanEmail}>\n\n${String(message).trim()}`,
       });
       emailNotificationSent = true;
     } catch (error) {

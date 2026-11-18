@@ -163,7 +163,7 @@ export default function ContactManagement() {
                     </div>
                     {msg.email && openId === msg.id && (
                       <a
-                        href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject || 'your message')}`}
+                        href={`mailto:${msg.email}?subject=${encodeURIComponent(`Re: ${msg.subject || 'your message'}`)}`}
                         className="inline-block mt-3 ml-4 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
                       >
                         Reply to {msg.name}

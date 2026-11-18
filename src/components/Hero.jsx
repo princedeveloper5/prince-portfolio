@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUpRight, Code2, Mail, MapPin } from 'lucide-react'
-import { FaGithub, FaLinkedinIn } from 'react-icons/fa'
+import { FaFacebookF, FaGithub, FaInstagram, FaLinkedinIn } from 'react-icons/fa'
 import { api, isOfflineError } from '../api.js'
 import { SITE_CONTACT } from '../siteConfig.js'
 
@@ -42,6 +42,8 @@ export default function Hero() {
           setSocials([
             { name: 'GitHub', href: about?.githubUrl, Icon: FaGithub },
             { name: 'LinkedIn', href: about?.linkedinUrl, Icon: FaLinkedinIn },
+            { name: 'Instagram', href: about?.instagramUrl, Icon: FaInstagram },
+            { name: 'Facebook', href: about?.facebookUrl, Icon: FaFacebookF },
           ].filter((social) => /^https?:\/\//i.test(String(social.href || ''))))
           setPhotoOk(true)
         })
@@ -146,7 +148,7 @@ export default function Hero() {
             </div>
           </div>
           <div aria-hidden="true" className="absolute -bottom-4 -left-4 -z-10 h-20 w-20 rounded-full border border-electric-400/25" />
-          <div className="hero-note absolute -right-4 top-8 z-20 rounded-xl border border-navy-600/70 bg-navy-800/90 px-4 py-3 shadow-xl sm:-right-10">
+          <div className="hero-note absolute right-3 top-8 z-20 rounded-xl border border-navy-600/70 bg-navy-800/90 px-4 py-3 shadow-xl sm:-right-10">
             <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">Based in</span>
             <span className="mt-1 block text-sm font-semibold text-white">{location}</span>
           </div>

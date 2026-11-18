@@ -12,7 +12,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
-import { FaGithub, FaLinkedinIn } from 'react-icons/fa'
+import { FaFacebookF, FaGithub, FaInstagram, FaLinkedinIn } from 'react-icons/fa'
 import Logo from './Logo'
 import { api } from '../api.js'
 
@@ -26,6 +26,8 @@ const primaryLinks = [
 const socialDefinitions = [
   { name: 'GitHub', field: 'githubUrl', Icon: FaGithub },
   { name: 'LinkedIn', field: 'linkedinUrl', Icon: FaLinkedinIn },
+  { name: 'Instagram', field: 'instagramUrl', Icon: FaInstagram },
+  { name: 'Facebook', field: 'facebookUrl', Icon: FaFacebookF },
 ]
 
 const validExternalUrl = (value) => /^https?:\/\//i.test(String(value || '').trim())

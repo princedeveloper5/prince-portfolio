@@ -11,7 +11,7 @@ export default function SkillsManagement() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingSkill, setEditingSkill] = useState(null)
-  const [formData, setFormData] = useState({ name: '', category: 'Frontend', level: 50 })
+  const [formData, setFormData] = useState({ name: '', category: 'Frontend', level: 50, isPublic: true })
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
 
@@ -35,13 +35,13 @@ export default function SkillsManagement() {
 
   const openAddModal = () => {
     setEditingSkill(null)
-    setFormData({ name: '', category: 'Frontend', level: 50 })
+    setFormData({ name: '', category: 'Frontend', level: 50, isPublic: true })
     setShowModal(true)
   }
 
   const openEditModal = (skill) => {
     setEditingSkill(skill)
-    setFormData({ name: skill.name, category: skill.category, level: skill.level })
+    setFormData({ name: skill.name, category: skill.category, level: skill.level, isPublic: skill.isPublic })
     setShowModal(true)
   }
 
@@ -153,7 +153,7 @@ export default function SkillsManagement() {
                     </button>
                   </div>
                 </div>
-                <div className="text-xs text-slate-400 mb-2">{skill.category}</div>
+                <div className="mb-2 flex items-center gap-2 text-xs text-slate-400"><span>{skill.category}</span><span className={`rounded-full px-2 py-0.5 ${skill.isPublic ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-700 text-slate-300'}`}>{skill.isPublic ? 'Public' : 'Hidden'}</span></div>
                 <div className="w-full bg-slate-700 rounded-full h-1.5">
                   <div 
                     className="bg-gradient-to-r from-blue-500 to-cyan-400 h-1.5 rounded-full" 
@@ -225,6 +225,10 @@ export default function SkillsManagement() {
                     className="w-full"
                   />
                 </div>
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-blue-500/20 bg-[#050B18] p-3">
+                  <input type="checkbox" checked={formData.isPublic} onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })} className="mt-0.5 accent-cyan-500" />
+                  <span><span className="block text-sm font-medium text-white">Show on public portfolio</span><span className="mt-1 block text-xs text-slate-400">Hidden skills remain in admin and are not shown to visitors.</span></span>
+                </label>
                 <div className="flex items-center gap-2 pt-2">
                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-2 bg-[#050B18] border border-blue-500/30 text-white rounded-lg text-sm">Cancel</button>
                   <button type="submit" disabled={loading} className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg font-medium disabled:opacity-50 text-sm flex items-center justify-center gap-2">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Mail, MapPin, MessageSquare, Phone, Send, User } from 'lucide-react'
-import { FaGithub, FaLinkedinIn, FaTwitter } from 'react-icons/fa'
+import { FaFacebookF, FaGithub, FaInstagram, FaLinkedinIn, FaTwitter } from 'react-icons/fa'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import Reveal from '../components/Reveal'
@@ -8,7 +8,7 @@ import { api, isOfflineError } from '../api.js'
 import { SITE_CONTACT, SITE_SOCIALS } from '../siteConfig.js'
 
 const DEFAULTS = SITE_CONTACT
-const ICONS = { github: FaGithub, linkedin: FaLinkedinIn, twitter: FaTwitter }
+const ICONS = { github: FaGithub, linkedin: FaLinkedinIn, twitter: FaTwitter, instagram: FaInstagram, facebook: FaFacebookF }
 
 const emptyForm = { name: '', email: '', subject: '', message: '' }
 
@@ -35,7 +35,7 @@ export default function ContactPage() {
           phone: data.phone?.trim() || DEFAULTS.phone,
           location: data.location?.trim() || DEFAULTS.location,
         })
-        setSocialUrls({ github: data.githubUrl || '', linkedin: data.linkedinUrl || '', twitter: data.twitterUrl || '' })
+        setSocialUrls({ github: data.githubUrl || '', linkedin: data.linkedinUrl || '', twitter: data.twitterUrl || '', instagram: data.instagramUrl || '', facebook: data.facebookUrl || '' })
         })
         .catch((err) => {
           if (!isOfflineError(err)) console.warn('Contact info:', err.message)
@@ -59,6 +59,7 @@ export default function ContactPage() {
     const next = {}
     if (!form.name.trim()) next.name = 'Please enter your name.'
     if (!form.email.trim()) next.email = 'Please enter your email.'
+    else if (form.email.trim().length > 254) next.email = 'Please enter an email address under 255 characters.'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       next.email = 'Please enter a valid email address.'
     }
@@ -82,7 +83,7 @@ export default function ContactPage() {
     setStatusText('')
 
     try {
-      const result = await api('/api/messages', {
+      await api('/api/messages', {
         method: 'POST',
         body: {
           name: form.name.trim(),
@@ -92,12 +93,10 @@ export default function ContactPage() {
         },
       })
       setStatus('sent')
-      setStatusText(result?.emailNotificationSent
-        ? 'Thanks! Your message was saved and an email notification was sent.'
-        : 'Thanks! Your message was saved to the portfolio inbox. Email notifications are not configured yet.')
+      setStatusText("THANK YOU FOR YOUR MESSAGE. I'LL GET BACK TO YOU SOON.")
       setForm(emptyForm)
     } catch (err) {
-      if (isOfflineError(err) || err.status >= 500) {
+      if (err.offline || err.status === undefined) {
         // Backend unreachable → fall back to opening the mail app.
         const subject = encodeURIComponent(`Portfolio message from ${form.name.trim()}`)
         const body = encodeURIComponent(
@@ -158,9 +157,9 @@ export default function ContactPage() {
             <form
               onSubmit={handleSubmit}
               noValidate
-              className="bg-navy-800 border border-navy-600 rounded-2xl p-6 sm:p-8 shadow-[0_0_60px_rgba(56,189,248,0.06)]"
+              className="w-full max-w-lg lg:justify-self-end bg-navy-800 border border-navy-600 rounded-2xl p-5 sm:p-6 shadow-[0_0_60px_rgba(56,189,248,0.06)]"
             >
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <Field
                   id="contact-name"
                   label="Name"
@@ -201,12 +200,12 @@ export default function ContactPage() {
                   <textarea
                     id="contact-message"
                     name="message"
-                    rows={6}
+                    rows={4}
                     placeholder="Your message..."
                     value={form.message}
                     onChange={update('message')}
                     aria-invalid={Boolean(errors.message)}
-                    className={`contact-field w-full resize-y min-h-[140px] rounded-xl bg-navy-900 border px-4 py-3 text-sm text-white placeholder:text-gray-500 outline-none transition-all duration-200 ${
+                    className={`contact-field w-full resize-y min-h-[104px] rounded-xl bg-navy-900 border px-4 py-2.5 text-sm text-white placeholder:text-gray-500 outline-none transition-all duration-200 ${
                       errors.message
                         ? 'border-red-400/70 focus:border-red-400 focus:ring-2 focus:ring-red-400/20'
                         : 'border-navy-600 focus:border-electric-400 focus:ring-2 focus:ring-electric-400/20'
@@ -288,7 +287,7 @@ function Field({ id, label, icon: Icon, error, ...inputProps }) {
           name={id.replace('contact-', '')}
           {...inputProps}
           aria-invalid={Boolean(error)}
-          className={`contact-field w-full rounded-xl bg-navy-900 border pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-500 outline-none transition-all duration-200 ${
+          className={`contact-field w-full rounded-xl bg-navy-900 border pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-gray-500 outline-none transition-all duration-200 ${
             error
               ? 'border-red-400/70 focus:border-red-400 focus:ring-2 focus:ring-red-400/20'
               : 'border-navy-600 focus:border-electric-400 focus:ring-2 focus:ring-electric-400/20'

@@ -1,7 +1,7 @@
-import { motion } from 'framer-motion'
-import { Edit, Save, X, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { ImagePlus } from 'lucide-react'
 import AdminLayout from '../../components/admin/AdminLayout'
+import EditableField from '../../components/admin/EditableField'
 import { api, isOfflineError } from '../../api.js'
 
 const DEFAULTS = {
@@ -18,12 +18,37 @@ const DEFAULTS = {
   metaDescription: 'Mugisha Prince is a software developer building modern web applications and useful digital products.',
 }
 
+const SECTIONS = [
+  {
+    title: 'Hero section',
+    description: 'The introduction at the top of your homepage.',
+    fields: [
+      ['greeting', 'Greeting'], ['name', 'Name'], ['title', 'Professional title'],
+      ['description', 'Introduction', true],
+    ],
+  },
+  {
+    title: 'Homepage content',
+    description: 'The about preview and contact callout shown further down the page.',
+    fields: [
+      ['aboutPreviewTitle', 'About heading'], ['aboutPreviewText', 'About text', true],
+      ['contactCtaTitle', 'Contact heading'], ['contactCtaText', 'Contact text', true],
+    ],
+  },
+  {
+    title: 'Search preview',
+    description: 'The page title and description used in browser tabs and search results.',
+    fields: [
+      ['metaTitle', 'Browser and search title'], ['metaDescription', 'Search description', true],
+    ],
+  },
+]
+
 export default function HomePageEditor() {
-  const [editing, setEditing] = useState(false)
-  const [heroData, setHeroData] = useState(DEFAULTS)
+  const [homeData, setHomeData] = useState(DEFAULTS)
+  const [selectedImage, setSelectedImage] = useState(null)
   const [imagePreview, setImagePreview] = useState(DEFAULTS.profileImage)
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [saving, setSaving] = useState(false)
+  const [savingImage, setSavingImage] = useState(false)
   const [status, setStatus] = useState('')
 
   useEffect(() => {
@@ -31,233 +56,107 @@ export default function HomePageEditor() {
     api('/api/home', { auth: true })
       .then((data) => {
         if (cancelled || !data) return
-        const next = {
-          greeting: data.greeting || DEFAULTS.greeting,
-          name: data.name || DEFAULTS.name,
-          title: data.title || DEFAULTS.title,
-          description: data.description || DEFAULTS.description,
-          profileImage: data.profileImage || DEFAULTS.profileImage,
-          aboutPreviewTitle: data.aboutPreviewTitle || DEFAULTS.aboutPreviewTitle,
-          aboutPreviewText: data.aboutPreviewText || DEFAULTS.aboutPreviewText,
-          contactCtaTitle: data.contactCtaTitle || DEFAULTS.contactCtaTitle,
-          contactCtaText: data.contactCtaText || DEFAULTS.contactCtaText,
-          metaTitle: data.metaTitle || DEFAULTS.metaTitle,
-          metaDescription: data.metaDescription || DEFAULTS.metaDescription,
-        }
-        setHeroData(next)
+        const next = Object.fromEntries(Object.keys(DEFAULTS).map((field) => [field, data[field] || DEFAULTS[field]]))
+        setHomeData(next)
         setImagePreview(next.profileImage)
       })
       .catch((err) => setStatus(`⚠ ${err.message}`))
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0]
+  const saveField = async (field, value) => {
+    setStatus('')
+    try {
+      const body = new FormData()
+      body.append(field, value)
+      const updated = await api('/api/home', { method: 'PUT', auth: true, body })
+      if (updated) setHomeData((previous) => ({ ...previous, [field]: updated[field] ?? value }))
+      setStatus(`✓ ${field === 'metaTitle' || field === 'metaDescription' ? 'Search preview' : 'Homepage'} updated.`)
+    } catch (err) {
+      throw new Error(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message)
+    }
+  }
+
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0]
     if (!file) return
     if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
       setStatus('✗ Choose a PNG, JPEG, GIF, or WebP image.')
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setStatus('✗ Image size must be less than 5MB')
+      setStatus('✗ Image size must be less than 5MB.')
       return
     }
-    setSelectedFile(file)
+    setSelectedImage(file)
     setImagePreview(URL.createObjectURL(file))
     setStatus('')
   }
 
-  const handleSave = async () => {
-    setSaving(true)
+  const saveImage = async () => {
+    if (!selectedImage) return
+    setSavingImage(true)
     setStatus('')
     try {
       const body = new FormData()
-      body.append('greeting', heroData.greeting)
-      body.append('name', heroData.name)
-      body.append('title', heroData.title)
-      body.append('description', heroData.description)
-      for (const field of ['aboutPreviewTitle', 'aboutPreviewText', 'contactCtaTitle', 'contactCtaText', 'metaTitle', 'metaDescription']) body.append(field, heroData[field])
-      if (selectedFile) {
-        body.append('image', selectedFile)
-      } else {
-        body.append('profileImage', heroData.profileImage)
-      }
-
+      body.append('image', selectedImage)
       const updated = await api('/api/home', { method: 'PUT', auth: true, body })
-      if (updated) {
-        setHeroData(prev => ({ ...prev, ...updated, profileImage: updated.profileImage || prev.profileImage }))
-        setImagePreview(updated.profileImage || imagePreview)
-      }
-      setSelectedFile(null)
-      setEditing(false)
-      setStatus('✓ Saved. The public homepage will use these changes when opened or refreshed.')
+      const nextImage = updated?.profileImage || imagePreview
+      setHomeData((previous) => ({ ...previous, profileImage: nextImage }))
+      setImagePreview(nextImage)
+      setSelectedImage(null)
+      setStatus('✓ Profile photo updated.')
     } catch (err) {
-      setStatus(
-        isOfflineError(err)
-          ? `${err.message} Start it with: npm run server`
-          : `✗ ${err.message}`,
-      )
+      setStatus(isOfflineError(err) ? `⚠ ${err.message} Start it with: npm run server` : `✗ ${err.message}`)
     } finally {
-      setSaving(false)
+      setSavingImage(false)
     }
   }
 
-  const handleCancel = () => {
-    setEditing(false)
-    setSelectedFile(null)
-    setImagePreview(heroData.profileImage)
-    setStatus('Changes discarded.')
-  }
-
   return (
-    <AdminLayout currentPage="Home">
-      <div className="p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-white">Home Page Editor</h1>
-            <p className="text-sm text-slate-400">Edit homepage content and images</p>
-          </div>
-          <motion.button
-            onClick={editing ? handleSave : () => setEditing(true)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-lg font-medium text-sm disabled:opacity-60"
-          >
-            {editing ? <><Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save Changes'}</> : <><Edit className="w-4 h-4" /> Edit Page</>}
-          </motion.button>
+    <AdminLayout currentPage="Home page">
+      <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
+        <div>
+          <h1 className="text-xl font-bold text-white sm:text-2xl">Home page</h1>
+          <p className="mt-1 text-sm text-slate-400">Choose one item to edit and save. Other homepage content stays untouched.</p>
         </div>
 
-        {status && (
-          <div
-            className={`text-sm rounded-lg px-3 py-2 border ${
-              status.startsWith('✓')
-                ? 'text-green-400 bg-green-500/10 border-green-500/30'
-                : status.startsWith('✗') || status.startsWith('⚠')
-                  ? 'text-amber-300 bg-amber-400/10 border-amber-400/30'
-                  : 'text-slate-300 bg-blue-500/10 border-blue-500/30'
-            }`}
-            role="status"
-          >
-            {status}
-          </div>
-        )}
+        {status && <div className={`rounded-lg border px-3 py-2 text-sm ${status.startsWith('✓') ? 'border-green-500/30 bg-green-500/10 text-green-300' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'}`} role="status">{status}</div>}
 
-        <div className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-blue-500/20">
-            <h2 className="text-lg font-semibold text-white">Hero Section</h2>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-white">Greeting</label>
-                  {editing ? (
-                    <input
-                      value={heroData.greeting}
-                      onChange={(e) => setHeroData({...heroData, greeting: e.target.value})}
-                      className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-400 text-sm"
-                    />
-                  ) : (
-                    <p className="text-slate-300 text-sm">{heroData.greeting}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-white">Name</label>
-                  {editing ? (
-                    <input
-                      value={heroData.name}
-                      onChange={(e) => setHeroData({...heroData, name: e.target.value})}
-                      className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-400 text-sm"
-                    />
-                  ) : (
-                    <p className="text-white font-semibold text-sm">{heroData.name}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-white">Title</label>
-                  {editing ? (
-                    <input
-                      value={heroData.title}
-                      onChange={(e) => setHeroData({...heroData, title: e.target.value})}
-                      className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-400 text-sm"
-                    />
-                  ) : (
-                    <p className="text-cyan-400 text-sm">{heroData.title}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-white">Description</label>
-                  {editing ? (
-                    <textarea
-                      value={heroData.description}
-                      onChange={(e) => setHeroData({...heroData, description: e.target.value})}
-                      rows={3}
-                      className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-400 text-sm resize-none"
-                    />
-                  ) : (
-                    <p className="text-slate-400 text-sm leading-relaxed">{heroData.description}</p>
-                  )}
-                </div>
+        <section className="rounded-2xl border border-blue-500/25 bg-[#08152A] p-4 sm:p-5" aria-labelledby="profile-photo-heading">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <img src={imagePreview} alt="Homepage profile preview" onError={(event) => { event.currentTarget.src = DEFAULTS.profileImage }} className="h-24 w-24 rounded-xl border border-blue-500/30 object-cover" />
+            <div className="min-w-0 flex-1">
+              <h2 id="profile-photo-heading" className="font-semibold text-white">Profile photo</h2>
+              <p className="mt-1 text-sm text-slate-400">Shown in the homepage introduction. Change this item on its own.</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-medium text-cyan-300 hover:bg-cyan-400/10">
+                  <ImagePlus className="h-4 w-4" /> Choose image
+                  <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleImageChange} className="sr-only" />
+                </label>
+                {selectedImage && <>
+                  <button type="button" onClick={saveImage} disabled={savingImage} className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">{savingImage ? 'Saving…' : 'Save photo'}</button>
+                  <button type="button" onClick={() => { setSelectedImage(null); setImagePreview(homeData.profileImage) }} disabled={savingImage} className="rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-300">Cancel</button>
+                </>}
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-2 text-white">Profile Image</label>
-                <div className="relative">
-                  <img
-                    src={imagePreview}
-                    alt="Profile"
-                    className="w-full h-48 object-cover rounded-lg border border-blue-500/30"
-                    onError={(e) => { e.currentTarget.src = DEFAULTS.profileImage }}
-                  />
-                  {editing && (
-                    <label className="absolute bottom-2 right-2 cursor-pointer">
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-xs">
-                        <Upload className="w-3 h-3" />
-                        Change Image
-                      </div>
-                      <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleImageChange} className="hidden" />
-                    </label>
-                  )}
-                  {selectedFile && (
-                    <p className="text-xs text-cyan-400 mt-2">
-                      New image selected: {selectedFile.name} — click Save to upload.
-                    </p>
-                  )}
-                </div>
-              </div>
+              {selectedImage && <p className="mt-2 text-xs text-slate-400">{selectedImage.name} · up to 5 MB</p>}
             </div>
-            {editing && (
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm disabled:opacity-60"
-                >
-                  <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
-                </button>
-                <button onClick={handleCancel} className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
-                  <X className="w-4 h-4" /> Cancel
-                </button>
-              </div>
-            )}
           </div>
-        </div>
+        </section>
 
-        <div className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-xl overflow-hidden">
-          <div className="border-b border-blue-500/20 p-4"><h2 className="text-lg font-semibold text-white">Homepage sections and search preview</h2><p className="mt-1 text-xs text-slate-400">These texts and search metadata are saved with the homepage.</p></div>
-          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
-            {[
-              ['aboutPreviewTitle', 'About preview heading', false], ['aboutPreviewText', 'About preview text', true],
-              ['contactCtaTitle', 'Contact callout heading', false], ['contactCtaText', 'Contact callout text', true],
-              ['metaTitle', 'Browser and search title', false], ['metaDescription', 'Search description', true],
-            ].map(([field, label, multiline]) => <label key={field} className="block text-xs font-medium text-slate-300">{label}
-              {editing ? (multiline ? <textarea rows={3} value={heroData[field]} onChange={(event) => setHeroData({ ...heroData, [field]: event.target.value })} className="mt-1 w-full rounded-lg border border-blue-500/30 bg-[#050B18] px-3 py-2 text-sm text-white" /> : <input value={heroData[field]} onChange={(event) => setHeroData({ ...heroData, [field]: event.target.value })} className="mt-1 w-full rounded-lg border border-blue-500/30 bg-[#050B18] px-3 py-2 text-sm text-white" />) : <span className="mt-1 block whitespace-pre-line text-sm text-white">{heroData[field]}</span>}
-            </label>)}
-            {editing && <div className="md:col-span-2"><button onClick={handleSave} disabled={saving} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save homepage'}</button></div>}
-          </div>
-        </div>
+        {SECTIONS.map((section) => (
+          <section key={section.title} className="rounded-2xl border border-blue-500/25 bg-[#08152A] p-4 sm:p-5" aria-labelledby={`heading-${section.title}`}>
+            <div className="mb-4">
+              <h2 id={`heading-${section.title}`} className="font-semibold text-white">{section.title}</h2>
+              <p className="mt-1 text-xs text-slate-400">{section.description}</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {section.fields.map(([field, label, multiline]) => (
+                <EditableField key={field} label={label} value={homeData[field]} multiline={multiline} onSave={(value) => saveField(field, value)} />
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
     </AdminLayout>
   )

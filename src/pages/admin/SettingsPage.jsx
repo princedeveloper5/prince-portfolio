@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Lock, X, Check, Info, Mail, Send } from 'lucide-react'
+import { Bell, Lock, X, Check, Mail, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
-import { api, isOfflineError } from '../../api.js'
+import { api, isOfflineError, setToken } from '../../api.js'
 import { PREFS_EVENT, readPrefs, savePrefs } from '../../adminPrefs.js'
 
 export default function SettingsPage() {
@@ -17,6 +17,12 @@ export default function SettingsPage() {
   const [emailError, setEmailError] = useState('')
   const [testingEmail, setTestingEmail] = useState(false)
   const [testResult, setTestResult] = useState('')
+  const [twoFactor, setTwoFactor] = useState(null)
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState('')
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [twoFactorPassword, setTwoFactorPassword] = useState('')
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false)
+  const [twoFactorFeedback, setTwoFactorFeedback] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -25,6 +31,64 @@ export default function SettingsPage() {
       .catch((err) => { if (!cancelled) setEmailError(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message) })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    api('/api/security/2fa', { auth: true })
+      .then((data) => { if (!cancelled) setTwoFactor(data) })
+      .catch((err) => { if (!cancelled) setTwoFactorFeedback(err.message) })
+    return () => { cancelled = true }
+  }, [])
+
+  const startTwoFactorSetup = async () => {
+    setTwoFactorBusy(true)
+    setTwoFactorFeedback('')
+    try {
+      const result = await api('/api/security/2fa/setup', { method: 'POST', auth: true })
+      setTwoFactorChallenge(result.challengeId)
+      setTwoFactorFeedback(result.message)
+    } catch (err) {
+      setTwoFactorFeedback(err.message)
+    } finally {
+      setTwoFactorBusy(false)
+    }
+  }
+
+  const enableTwoFactor = async (event) => {
+    event.preventDefault()
+    if (!/^\d{6}$/.test(twoFactorCode)) return setTwoFactorFeedback('Enter the six-digit code from your email.')
+    setTwoFactorBusy(true)
+    setTwoFactorFeedback('')
+    try {
+      const result = await api('/api/security/2fa/enable', { method: 'POST', auth: true, body: { challengeId: twoFactorChallenge, code: twoFactorCode } })
+      setToken(result.token)
+      setTwoFactor((previous) => ({ ...previous, enabled: true }))
+      setTwoFactorChallenge('')
+      setTwoFactorCode('')
+      setTwoFactorFeedback('✓ Two-factor sign-in is enabled for this account.')
+    } catch (err) {
+      setTwoFactorFeedback(err.message)
+    } finally {
+      setTwoFactorBusy(false)
+    }
+  }
+
+  const disableTwoFactor = async (event) => {
+    event.preventDefault()
+    setTwoFactorBusy(true)
+    setTwoFactorFeedback('')
+    try {
+      const result = await api('/api/security/2fa/disable', { method: 'POST', auth: true, body: { password: twoFactorPassword } })
+      setToken(result.token)
+      setTwoFactor((previous) => ({ ...previous, enabled: false }))
+      setTwoFactorPassword('')
+      setTwoFactorFeedback('✓ Two-factor sign-in has been disabled.')
+    } catch (err) {
+      setTwoFactorFeedback(err.message)
+    } finally {
+      setTwoFactorBusy(false)
+    }
+  }
 
   const handleTestEmail = async () => {
     setTestingEmail(true)
@@ -164,14 +228,30 @@ export default function SettingsPage() {
                 <p className="text-white">Change Password</p>
                 <p className="text-sm text-slate-400">Update your admin password</p>
               </button>
-              <div className="w-full p-3 bg-[#050B18] border border-blue-500/30 rounded-lg">
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Info className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <p className="text-white">Two-Factor Authentication</p>
+              <div className="rounded-lg border border-blue-500/30 bg-[#050B18] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-white">Email two-factor sign-in</p>
+                    <p className="mt-1 text-sm text-slate-400">Require a one-time code after your password.</p>
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${twoFactor?.enabled ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-slate-600 bg-slate-700/50 text-slate-300'}`}>
+                    {twoFactor ? (twoFactor.enabled ? 'Enabled' : 'Disabled') : 'Checking…'}
+                  </span>
                 </div>
-                <p className="text-sm text-slate-400 mt-1">
-                  Not available yet — the API does not support 2FA. Use a unique password of 12+ characters instead.
-                </p>
+                {twoFactorFeedback && <p className={`mt-3 text-sm ${twoFactorFeedback.startsWith('✓') ? 'text-emerald-300' : 'text-amber-200'}`} role="status" aria-live="polite">{twoFactorFeedback}</p>}
+                {twoFactor && !twoFactor.enabled && !twoFactorChallenge && <div className="mt-3">
+                  <button type="button" onClick={startTwoFactorSetup} disabled={twoFactorBusy || !twoFactor.emailConfigured} className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50">{twoFactorBusy ? 'Sending code…' : 'Enable two-factor sign-in'}</button>
+                  <p className="mt-2 text-xs text-slate-500">A code will be sent to {twoFactor.email}. {!twoFactor.emailConfigured && 'Email delivery is not configured on the server yet.'}</p>
+                </div>}
+                {twoFactorChallenge && <form onSubmit={enableTwoFactor} className="mt-3 space-y-3">
+                  <label htmlFor="two-factor-code" className="block text-sm font-medium text-slate-200">Enter the six-digit code</label>
+                  <input id="two-factor-code" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={twoFactorCode} onChange={(event) => setTwoFactorCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full max-w-xs rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-lg tracking-[0.3em] text-white focus:border-cyan-400 focus:outline-none" />
+                  <div className="flex gap-2"><button type="submit" disabled={twoFactorBusy} className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{twoFactorBusy ? 'Verifying…' : 'Verify and enable'}</button><button type="button" onClick={() => { setTwoFactorChallenge(''); setTwoFactorCode(''); setTwoFactorFeedback('') }} className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200">Cancel</button></div>
+                </form>}
+                {twoFactor?.enabled && <form onSubmit={disableTwoFactor} className="mt-3 space-y-3">
+                  <label htmlFor="disable-two-factor-password" className="block text-sm font-medium text-slate-200">Confirm your password to disable</label>
+                  <div className="flex flex-col gap-2 sm:flex-row"><input id="disable-two-factor-password" type="password" autoComplete="current-password" required value={twoFactorPassword} onChange={(event) => setTwoFactorPassword(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none" /><button type="submit" disabled={twoFactorBusy} className="rounded-lg border border-rose-500/40 px-3 py-2 text-sm font-medium text-rose-200 hover:bg-rose-500/10 disabled:opacity-50">{twoFactorBusy ? 'Updating…' : 'Disable'}</button></div>
+                </form>}
               </div>
             </div>
           </motion.div>

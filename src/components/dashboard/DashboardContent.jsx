@@ -339,7 +339,7 @@ export default function DashboardContent() {
             { label: 'Add Project', icon: Plus, action: () => navigate('/admin/projects/add') },
             { label: 'Add Skill', icon: Code, action: () => navigate('/admin/skills') },
             { label: 'Upload CV', icon: Folder, action: () => navigate('/admin/about') },
-            { label: 'Edit Profile', icon: Users, action: () => navigate('/admin/home') },
+            { label: 'Manage Social Links', icon: Users, action: () => navigate('/admin/about#social-links') },
           ].map((action, index) => (
             <motion.button
               key={index}

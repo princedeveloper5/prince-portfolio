@@ -14,6 +14,8 @@ const availableTechnologies = [
 const emptyForm = {
   title: '',
   description: '',
+  problem: '',
+  features: '',
   technologies: [],
   liveDemoUrl: '',
   githubUrl: '',
@@ -75,6 +77,8 @@ export default function ProjectsManagement() {
     setFormData({
       title: project.title || '',
       description: project.description || '',
+      problem: project.problem || '',
+      features: project.features || '',
       technologies: project.technologies || [],
       liveDemoUrl: project.liveDemoUrl || '',
       githubUrl: project.githubUrl || '',
@@ -185,6 +189,8 @@ export default function ProjectsManagement() {
       const body = new FormData()
       body.append('title', formData.title.trim())
       body.append('description', formData.description.trim())
+      body.append('problem', formData.problem.trim())
+      body.append('features', formData.features.trim())
       body.append('technologies', JSON.stringify(formData.technologies))
       body.append('liveDemoUrl', formData.liveDemoUrl.trim())
       body.append('githubUrl', formData.githubUrl.trim())
@@ -437,6 +443,31 @@ export default function ProjectsManagement() {
                     className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-sm resize-none"
                   />
                   {errors.description && <p className="text-red-400 text-xs mt-1">{errors.description}</p>}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-white">Problem addressed</label>
+                    <textarea
+                      value={formData.problem}
+                      onChange={(event) => setFormData({ ...formData, problem: event.target.value })}
+                      placeholder="What need or challenge led you to build this?"
+                      maxLength={10000}
+                      rows={4}
+                      className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-sm resize-y"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-white">Solution and key features</label>
+                    <textarea
+                      value={formData.features}
+                      onChange={(event) => setFormData({ ...formData, features: event.target.value })}
+                      placeholder="What does it do, and what did you build?"
+                      maxLength={10000}
+                      rows={4}
+                      className="w-full px-3 py-2 bg-[#050B18] border border-blue-500/30 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-sm resize-y"
+                    />
+                  </div>
                 </div>
 
                 <div>

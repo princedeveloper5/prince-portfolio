@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Briefcase, Download, Mail, MapPin } from 'lucide-react'
+import { FaFacebookF, FaGithub, FaInstagram, FaLinkedinIn, FaTwitter } from 'react-icons/fa'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import Reveal from '../components/Reveal'
@@ -13,8 +14,14 @@ const DEFAULT_ABOUT = {
     "I'm Mugisha Prince, a passionate software developer from Rwanda. I enjoy building web applications that solve real problems and make life easier.\n\nI'm currently learning and improving my skills in modern web technologies. I love turning ideas into real products and I'm always eager to learn something new.",
   ...SITE_CONTACT,
   experience: '1+ year (learning & building)',
-  cvUrl: '', githubUrl: '', linkedinUrl: '', twitterUrl: '',
+  cvUrl: '', githubUrl: '', linkedinUrl: '', twitterUrl: '', instagramUrl: '', facebookUrl: '',
 }
+
+const SOCIALS = [
+  ['GitHub', 'githubUrl', FaGithub], ['LinkedIn', 'linkedinUrl', FaLinkedinIn],
+  ['Twitter / X', 'twitterUrl', FaTwitter], ['Instagram', 'instagramUrl', FaInstagram],
+  ['Facebook', 'facebookUrl', FaFacebookF],
+]
 
 export default function AboutPage() {
   const [photoOk, setPhotoOk] = useState(true)
@@ -41,6 +48,7 @@ export default function AboutPage() {
                   location: data.location,
                   cvUrl: data.cvUrl, githubUrl: data.githubUrl,
                   linkedinUrl: data.linkedinUrl, twitterUrl: data.twitterUrl,
+                  instagramUrl: data.instagramUrl, facebookUrl: data.facebookUrl,
                 }).filter(([, v]) => v && String(v).trim()),
               ),
             })
@@ -125,6 +133,16 @@ export default function AboutPage() {
                   </span>
                 )}
               </Reveal>
+
+              {SOCIALS.some(([, field]) => about[field]) && (
+                <div className="mt-7 flex flex-wrap gap-3">
+                  {SOCIALS.filter(([, field]) => /^https?:\/\//i.test(String(about[field] || ''))).map(([label, field, Icon]) => (
+                    <a key={field} href={about[field]} target="_blank" rel="noopener noreferrer" aria-label={`${label} profile (opens in a new tab)`} className="contact-social flex h-10 w-10 items-center justify-center rounded-lg border border-navy-600 bg-navy-800 text-electric-400 transition hover:border-electric-400 hover:bg-electric-400/10">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </a>
+                  ))}
+                </div>
+              )}
             </Reveal>
 
             {/* Right — portrait */}

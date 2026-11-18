@@ -9,4 +9,6 @@ export const SITE_SOCIALS = [
   { name: 'GitHub', href: '', icon: 'github' },
   { name: 'LinkedIn', href: '', icon: 'linkedin' },
   { name: 'Twitter', href: '', icon: 'twitter' },
+  { name: 'Instagram', href: '', icon: 'instagram' },
+  { name: 'Facebook', href: '', icon: 'facebook' },
 ]

@@ -15,7 +15,7 @@ function Stat({ value, label }) {
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [value])
-  return <div className="stat-item"><p className="text-electric-400 text-3xl md:text-4xl font-bold tabular-nums">{count}<span className="ml-1 text-xl">+</span></p><p className="mt-1 text-sm text-gray-400 md:text-base">{label}</p></div>
+  return <div className="stat-item"><p className="text-electric-400 text-3xl md:text-4xl font-bold tabular-nums">{count}</p><p className="mt-1 text-sm text-gray-400 md:text-base">{label}</p></div>
 }
 
 export default function Stats() {

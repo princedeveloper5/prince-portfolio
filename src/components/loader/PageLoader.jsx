@@ -3,9 +3,8 @@ import Logo from '../Logo'
 import './PageLoader.css'
 
 const STATUS_MESSAGES = [
-  'Preparing your experience...',
-  'Loading assets...',
-  'Almost ready...',
+  'please wait...',
+  'Page is loading'
 ]
 
 const HIDE_TRANSITION_MS = 420
@@ -87,7 +86,7 @@ export default function PageLoader({ ready = false, error = null, onRetry }) {
         <div className="page-loader__brand">
           {/* Brand name, not a page heading: the page's h1 belongs to Home. */}
           <div className="page-loader__name">Mugisha Prince</div>
-          <p className="page-loader__title">SOFTWARE DEVELOPER</p>
+          <p className="page-loader__title">FullStack DEVELOPER</p>
         </div>
 
         {isError ? (

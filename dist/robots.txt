@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+
+Sitemap: https://prince-portfolio-panta6.vercel.app/sitemap.xml

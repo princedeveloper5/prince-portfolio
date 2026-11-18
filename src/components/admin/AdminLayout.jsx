@@ -12,7 +12,7 @@ const menuItems = [
   { icon: Home, label: 'Home page', path: '/admin/home' },
   { icon: Folder, label: 'Projects', path: '/admin/projects' },
   { icon: Code, label: 'Skills', path: '/admin/skills' },
-  { icon: User, label: 'About', path: '/admin/about' },
+  { icon: User, label: 'Profile & links', path: '/admin/about' },
   { icon: Mail, label: 'Messages', path: '/admin/contact' },
   { icon: Users, label: 'Users', path: '/admin/users', adminOnly: true },
   { icon: Settings, label: 'Settings', path: '/admin/settings' },
@@ -54,12 +54,12 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
   const visibleItems = menuItems.filter((item) => !item.adminOnly || user?.role === 'admin')
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#050B18] to-[#08152A] text-white">
+    <div className="admin-shell min-h-screen bg-gradient-to-br from-[#050B18] to-[#08152A] text-white">
       {menuOpen && <button aria-label="Close navigation" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-40 bg-black/60 lg:hidden" />}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 border-r border-blue-500/30 bg-gradient-to-b from-[#08152A] to-[#050B18] transition-transform duration-200 ${menuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="flex h-20 items-center gap-3 border-b border-blue-500/20 px-5">
           <img src={logoImg} alt="Mugisha Prince logo" className="h-11 w-11 rounded-full object-cover shadow-[0_0_24px_rgba(56,189,248,.3)]" />
-          <div><p className="font-semibold">Mugisha Prince</p><p className="text-xs text-cyan-400">Portfolio manager</p></div>
+          <div><p className="font-semibold">Mugisha Prince</p><p className="text-xs text-cyan-400">Admin Dashboard</p></div>
           <button className="ml-auto rounded-lg p-2 text-slate-300 hover:bg-white/10 lg:hidden" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X size={18} /></button>
         </div>
         <nav className="space-y-1 p-3" aria-label="Admin navigation">

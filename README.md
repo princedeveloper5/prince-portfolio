@@ -66,7 +66,7 @@ Sign in at `/admin/login`. The dashboard links to each manager:
 - **Skills** manages the public skills list.
 - **About** edits your biography, contact details, CV URL, and social profile URLs. Its contact and social links appear on the public About and Contact pages and in the footer.
 - **Messages** shows contact form submissions and their read status.
-- **Settings** changes the admin password. Notification switches are local preferences only; email delivery and push notifications need separate configuration.
+- **Settings** changes the admin password, enables optional email-code two-factor sign-in, and lets you send a test notification. Email two-factor sign-in needs SMTP configured; once enabled, new sign-ins require a six-digit code sent to that account's email. Notification switches are local preferences only; push notifications need separate configuration.
 
 Content is stored in `portfolio.db`. The public pages load it from the API without browser caching and refresh when revisited or focused. Only Published projects are returned to visitors; admin requests can also see drafts. Homepage stats and skill/project sections are based on database content. The dashboard visitor chart records one visit per browser session when the homepage is visited and groups visits by day.
 

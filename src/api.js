@@ -8,10 +8,18 @@
  */
 
 const TOKEN_KEY = 'admin_token'
+let sessionToken = ''
 
-export const getToken = () => window.localStorage?.getItem(TOKEN_KEY) || ''
-export const setToken = (token) =>
-  token ? window.localStorage?.setItem(TOKEN_KEY, token) : window.localStorage?.removeItem(TOKEN_KEY)
+export const getToken = () => {
+  try { return window.localStorage?.getItem(TOKEN_KEY) || sessionToken } catch { return sessionToken }
+}
+export const setToken = (token) => {
+  sessionToken = token || ''
+  try {
+    if (token) window.localStorage?.setItem(TOKEN_KEY, token)
+    else window.localStorage?.removeItem(TOKEN_KEY)
+  } catch { /* Keep the session for this tab when browser storage is unavailable. */ }
+}
 
 export async function api(path, { method = 'GET', body, auth = false, signal } = {}) {
   const headers = {}

@@ -1,0 +1,1 @@
+var e={email:`mugishaprince@gmail.com`,phone:`+250 788 123 456`,location:`Kigali, Rwanda`},t=[{name:`GitHub`,href:``,icon:`github`},{name:`LinkedIn`,href:``,icon:`linkedin`},{name:`Twitter`,href:``,icon:`twitter`},{name:`Instagram`,href:``,icon:`instagram`},{name:`Facebook`,href:``,icon:`facebook`}];export{t as n,e as t};

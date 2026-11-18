@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Share2 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import Reveal from '../components/Reveal'
 import { api, isOfflineError, formatDate } from '../api.js'
-
-const FILTERS = ['All', 'Web Apps', 'Mobile Apps', 'Full Stack']
 
 const SORTS = [
   { value: 'newest', label: 'Newest first' },
@@ -208,6 +207,25 @@ function ProjectLink({ href, className, children }) {
 
 /** Full-page view for /projects/:id, including drafts opened from admin. */
 function ProjectDetail({ project, notFound, loading }) {
+  const [shareMessage, setShareMessage] = useState('')
+
+  const shareProject = async () => {
+    const url = new URL(`/projects/${project.id}`, window.location.origin).toString()
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: project.title, text: project.description, url })
+        setShareMessage('Project shared.')
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        setShareMessage('Project link copied.')
+      } else {
+        setShareMessage('Copy this link from your browser address bar to share the project.')
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') setShareMessage('Could not share this project. Copy the address bar link instead.')
+    }
+  }
+
   if (loading) {
     return <p className="py-16 text-center text-gray-400">Loading project…</p>
   }
@@ -294,7 +312,9 @@ function ProjectDetail({ project, notFound, loading }) {
           </ProjectLink>
         )}
         <Link to="/contact" className="btn-secondary text-sm">Discuss this project</Link>
+        <button type="button" onClick={shareProject} className="btn-secondary text-sm"><Share2 className="h-4 w-4" /> Share project</button>
       </Reveal>
+      {shareMessage && <p className="mt-3 text-sm text-gray-400" role="status">{shareMessage}</p>}
     </article>
   )
 }
@@ -311,7 +331,7 @@ export default function ProjectsPage() {
   const [sort, setSort] = useState('newest')
   const [activeFilter, setActiveFilter] = useState(() => {
     const fromUrl = searchParams.get('category')
-    return fromUrl && FILTERS.includes(fromUrl) ? fromUrl : 'All'
+    return fromUrl || 'All'
   })
 
   const load = () => {
@@ -358,6 +378,15 @@ export default function ProjectsPage() {
     [allProjects],
   )
 
+  const filters = useMemo(
+    () => ['All', ...new Set(published.map((project) => project.category.trim()).filter(Boolean))],
+    [published],
+  )
+
+  useEffect(() => {
+    if (!loading && activeFilter !== 'All' && !filters.includes(activeFilter)) setActiveFilter('All')
+  }, [loading, activeFilter, filters])
+
   const detailProject = useMemo(
     () => (id ? allProjects.find((project) => String(project.id) === String(id)) : null),
     [allProjects, id],
@@ -366,7 +395,7 @@ export default function ProjectsPage() {
   const projects = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const filtered = published.filter((project) => {
-      const matchesCategory = activeFilter === 'All' || project.category === activeFilter
+      const matchesCategory = activeFilter === 'All' || project.category.trim() === activeFilter
       if (!matchesCategory) return false
       if (!needle) return true
       return (
@@ -471,7 +500,7 @@ export default function ProjectsPage() {
               </Reveal>
 
               <Reveal className="mb-10 flex flex-wrap gap-3" delay={140} y={18}>
-                {FILTERS.map((filter) => (
+                {filters.map((filter) => (
                   <button
                     key={filter}
                     type="button"
