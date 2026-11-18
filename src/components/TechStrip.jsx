@@ -16,8 +16,10 @@ export default function TechStrip() {
   }, [])
   if (!skills.length) return null
   return (
-    <section aria-label="Technical skills" className="border-y border-navy-600/30 bg-navy-900/50 py-10">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-3 px-4 sm:px-6 lg:px-8">
+    <section aria-label="Technical skills" className="tech-strip border-y border-navy-600/30 bg-navy-900/50 py-12 sm:py-14">
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:grid-cols-[220px_1fr] lg:items-center lg:px-8">
+        <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-electric-400">Tools I use</p><Link to="/skills" className="mt-2 inline-flex items-center gap-2 text-sm text-gray-400 transition hover:text-white">View all skills <span aria-hidden="true">→</span></Link></div>
+        <div className="flex flex-wrap gap-2.5">
         {skills.slice(0, 12).map((skill, index) => (
           <Reveal key={skill.id} delay={index * 45} y={16}>
             <Link
@@ -28,6 +30,7 @@ export default function TechStrip() {
             </Link>
           </Reveal>
         ))}
+        </div>
       </div>
     </section>
   )

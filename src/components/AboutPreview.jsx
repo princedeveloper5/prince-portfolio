@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
 import { api } from '../api.js'
 import Reveal from './Reveal'
 
@@ -20,11 +21,14 @@ export default function AboutPreview() {
     return () => { active = false; window.removeEventListener('focus', load) }
   }, [])
   return (
-    <section className="bg-navy-900/50 py-20">
-      <Reveal className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8" y={34}>
-        <h2 className="mb-6 text-3xl font-bold text-white md:text-4xl">{content.aboutPreviewTitle}</h2>
-        <p className="mx-auto mb-8 max-w-3xl whitespace-pre-line text-lg leading-relaxed text-gray-400">{content.aboutPreviewText}</p>
-        <Link to="/about" className="btn-secondary">More About Me <span>→</span></Link>
+    <section className="about-preview bg-navy-900/50 py-20 sm:py-24">
+      <Reveal className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.7fr_1.3fr] lg:items-center lg:px-8" y={34}>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-electric-400">A little about me</p>
+        <div>
+          <h2 className="mb-5 max-w-3xl text-3xl font-bold leading-tight text-white md:text-4xl">{content.aboutPreviewTitle}</h2>
+          <p className="mb-7 max-w-3xl whitespace-pre-line text-lg leading-relaxed text-gray-400">{content.aboutPreviewText}</p>
+          <Link to="/about" className="inline-flex items-center gap-2 font-semibold text-electric-400 transition hover:gap-3">More about me <ArrowRight size={17} /></Link>
+        </div>
       </Reveal>
     </section>
   )
