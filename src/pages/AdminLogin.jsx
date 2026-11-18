@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext.jsx'
 import { Eye, EyeOff } from 'lucide-react'
-import logoImg from '../../my images/logo.png'
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('')
@@ -82,7 +81,10 @@ export default function AdminLogin() {
             <div className="text-center lg:text-left space-y-6">
               <div className="flex justify-center lg:justify-start">
                 <img
-                  src={logoImg}
+                  src="/logo.webp"
+                  width="512"
+                  height="512"
+                  decoding="async"
                   alt="Mugisha Prince logo"
                   className="w-16 h-16 rounded-xl object-cover shadow-lg shadow-electric-400/25"
                 />

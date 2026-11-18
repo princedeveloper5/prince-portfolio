@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Search, Filter, Edit, Trash2, Eye, X, Check } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -35,23 +35,24 @@ export default function ProjectsManagement() {
   const [imagePreview, setImagePreview] = useState(null)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+  const [loadingProjects, setLoadingProjects] = useState(true)
   const [listError, setListError] = useState('')
   const [dragActive, setDragActive] = useState(false)
 
-  // Load real projects from the API
-  useEffect(() => {
-    let cancelled = false
-    api('/api/projects', { auth: true })
-      .then((rows) => {
-        if (!cancelled && Array.isArray(rows)) setProjects(rows)
-      })
-      .catch((err) => {
-        if (!cancelled) setListError(err.message)
-      })
-    return () => {
-      cancelled = true
+  const loadProjects = useCallback(async () => {
+    setLoadingProjects(true)
+    setListError('')
+    try {
+      const rows = await api('/api/admin/projects', { auth: true })
+      setProjects(Array.isArray(rows) ? rows : [])
+    } catch (err) {
+      setListError(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message)
+    } finally {
+      setLoadingProjects(false)
     }
   }, [])
+
+  useEffect(() => { loadProjects() }, [loadProjects])
 
   // /admin/projects/add opens the create modal directly
   useEffect(() => {
@@ -260,8 +261,9 @@ export default function ProjectsManagement() {
         </div>
 
         {listError && (
-          <div className="text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
-            {listError}
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200" role="alert">
+            <span>{listError}</span>
+            <button type="button" onClick={loadProjects} disabled={loadingProjects} className="shrink-0 rounded-md border border-amber-300/30 px-2.5 py-1 text-xs font-semibold hover:bg-amber-300/10 disabled:opacity-50">{loadingProjects ? 'Loading…' : 'Try again'}</button>
           </div>
         )}
 
@@ -301,14 +303,16 @@ export default function ProjectsManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProjects.length === 0 && (
+                {loadingProjects ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-300 text-sm"><span className="inline-flex items-center gap-3" role="status" aria-live="polite"><span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-300" aria-hidden="true" />Loading your projects…</span></td></tr>
+                ) : !listError && filteredProjects.length === 0 && (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-slate-400 text-sm">
                       {projects.length === 0 ? 'No projects yet — add your first one.' : 'No project matches your search.'}
                     </td>
                   </tr>
                 )}
-                {filteredProjects.map((project, index) => (
+                {!loadingProjects && filteredProjects.map((project, index) => (
                   <motion.tr
                     key={project.id}
                     initial={{ opacity: 0, y: 10 }}

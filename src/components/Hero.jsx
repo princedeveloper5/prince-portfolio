@@ -11,11 +11,11 @@ const DEFAULTS = {
   title: 'Software Developer',
   description:
     'I build modern web applications and solve real problems with clean, efficient code. Passionate about learning, creating and growing in the tech industry.',
-  profileImage: '/passport-2.png',
+  profileImage: '/passport-2.webp',
 }
 
 const resolveProfileImage = (image) =>
-  !image || image === '/mugisha-prince.png' ? DEFAULTS.profileImage : image
+  !image || image === '/mugisha-prince.png' || image === '/passport-2.png' ? DEFAULTS.profileImage : image
 
 export default function Hero() {
   const [content, setContent] = useState(DEFAULTS)

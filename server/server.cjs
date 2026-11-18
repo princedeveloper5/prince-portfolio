@@ -477,6 +477,8 @@ const seedData = async () => {
       await run(`ALTER TABLE about_content ADD COLUMN ${column} ${definition}`);
     }
   }
+  await run("UPDATE home_content SET profile_image = '/passport-2.webp' WHERE profile_image IN ('/mugisha-prince.png', '/passport-2.png')");
+  await run("UPDATE about_content SET portrait_image = '/passport-2.webp' WHERE portrait_image IN ('/mugisha-prince.png', '/passport-2.png')");
 
   // Remove only the legacy, publicly documented demo account if its password
   // is still unchanged. Never create a known default administrator.
@@ -537,7 +539,7 @@ const seedData = async () => {
       'Mugisha Prince',
       'Software Developer',
       'I build modern web applications and solve real problems with clean, efficient code. Passionate about learning, creating and growing in the tech industry.',
-      '/mugisha-prince.png',
+      '/passport-2.webp',
       'Driven by Curiosity. Built Through Code.',
       'I enjoy turning ideas into useful, user-friendly software and continue to grow by learning and building real projects.',
       "Have an idea? Let's build something useful.",
@@ -738,24 +740,13 @@ app.post('/api/password-reset/complete', limitRequests({ windowMs: 15 * 60 * 100
 }));
 
 // ---------- projects ----------
-async function optionalAuth(req, res, next) {
-  const header = req.headers.authorization || '';
-  if (!header.startsWith('Bearer ')) return next();
-  try {
-    const decoded = jwt.verify(header.slice(7), JWT_SECRET);
-    req.user = await get('SELECT id, email, name, role, session_version FROM users WHERE id = ?', [decoded.id]);
-    if (!req.user) return res.status(401).json({ error: 'Session expired, please log in again' });
-    if ((decoded.sessionVersion || 0) !== req.user.session_version) return res.status(401).json({ error: 'Your security settings changed. Please sign in again.' });
-    return next();
-  } catch {
-    return res.status(401).json({ error: 'Session expired, please log in again' });
-  }
-}
+app.get('/api/projects', asyncRoute(async (req, res) => {
+  const rows = await all("SELECT * FROM projects WHERE status = 'Published' ORDER BY created_at DESC, id DESC");
+  res.json(rows.map(projectToJson));
+}));
 
-app.get('/api/projects', optionalAuth, asyncRoute(async (req, res) => {
-  const rows = req.user
-    ? await all('SELECT * FROM projects ORDER BY created_at DESC, id DESC')
-    : await all("SELECT * FROM projects WHERE status = 'Published' ORDER BY created_at DESC, id DESC");
+app.get('/api/admin/projects', requireAuth, asyncRoute(async (req, res) => {
+  const rows = await all('SELECT * FROM projects ORDER BY created_at DESC, id DESC');
   res.json(rows.map(projectToJson));
 }));
 
@@ -837,8 +828,13 @@ app.delete('/api/projects/:id', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 // ---------- skills ----------
-app.get('/api/skills', optionalAuth, asyncRoute(async (req, res) => {
-  const rows = await all(req.user ? 'SELECT * FROM skills ORDER BY id ASC' : 'SELECT * FROM skills WHERE is_public = 1 ORDER BY id ASC');
+app.get('/api/skills', asyncRoute(async (req, res) => {
+  const rows = await all('SELECT * FROM skills WHERE is_public = 1 ORDER BY id ASC');
+  res.json(rows.map(skillToJson));
+}));
+
+app.get('/api/admin/skills', requireAuth, asyncRoute(async (req, res) => {
+  const rows = await all('SELECT * FROM skills ORDER BY id ASC');
   res.json(rows.map(skillToJson));
 }));
 

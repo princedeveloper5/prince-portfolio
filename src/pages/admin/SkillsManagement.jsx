@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Search, Edit, Trash2, Code, X, Check } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { api, isOfflineError } from '../../api.js'
 
@@ -12,22 +12,23 @@ export default function SkillsManagement() {
   const [showModal, setShowModal] = useState(false)
   const [editingSkill, setEditingSkill] = useState(null)
   const [formData, setFormData] = useState({ name: '', category: 'Frontend', level: 50, isPublic: true })
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-    api('/api/skills', { auth: true })
-      .then((rows) => {
-        if (!cancelled && Array.isArray(rows)) setSkills(rows)
-      })
-      .catch((err) => {
-        if (!cancelled) setLoadError(err.message)
-      })
-    return () => {
-      cancelled = true
+  const loadSkills = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const rows = await api('/api/admin/skills', { auth: true })
+      setSkills(Array.isArray(rows) ? rows : [])
+    } catch (err) {
+      setLoadError(isOfflineError(err) ? `${err.message} Start it with: npm run server` : err.message)
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => { loadSkills() }, [loadSkills])
 
   const filteredSkills = skills.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -106,8 +107,9 @@ export default function SkillsManagement() {
         </div>
 
         {loadError && (
-          <div className="text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
-            {loadError}
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200" role="alert">
+            <span>{loadError}</span>
+            <button type="button" onClick={loadSkills} disabled={loading} className="shrink-0 rounded-md border border-amber-300/30 px-2.5 py-1 text-xs font-semibold hover:bg-amber-300/10 disabled:opacity-50">{loading ? 'Loading…' : 'Try again'}</button>
           </div>
         )}
 
@@ -125,12 +127,17 @@ export default function SkillsManagement() {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
-            {filteredSkills.length === 0 && (
+            {loading ? (
+              <div className="col-span-full flex items-center justify-center gap-3 py-10 text-sm text-slate-300" role="status" aria-live="polite">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-300" aria-hidden="true" />
+                Loading your skills…
+              </div>
+            ) : !loadError && filteredSkills.length === 0 && (
               <p className="text-slate-400 text-sm col-span-full text-center py-8">
                 {skills.length === 0 ? 'No skills yet — add your first one.' : 'No skill matches your search.'}
               </p>
             )}
-            {filteredSkills.map((skill, index) => (
+            {!loading && filteredSkills.map((skill, index) => (
               <motion.div
                 key={skill.id}
                 initial={{ opacity: 0, scale: 0.9 }}

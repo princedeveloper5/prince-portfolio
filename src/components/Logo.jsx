@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 /**
  * Site logo (circular MP emblem). Falls back to the gradient MP badge
- * if /logo.png is missing.
+ * if the optimized WebP logo is missing.
  */
 export default function Logo({ className = 'w-10 h-10' }) {
   const [ok, setOk] = useState(true)
@@ -19,7 +19,10 @@ export default function Logo({ className = 'w-10 h-10' }) {
 
   return (
     <img
-      src="/logo.png"
+      src="/logo.webp"
+      width="512"
+      height="512"
+      decoding="async"
       alt="Mugisha Prince logo"
       className={`${className} shrink-0 rounded-full object-cover`}
       onError={() => setOk(false)}

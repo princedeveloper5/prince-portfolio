@@ -9,7 +9,7 @@ const DEFAULTS = {
   name: 'Mugisha Prince',
   title: 'Software Developer',
   description: 'I build modern web applications and solve real problems with clean, efficient code. Passionate about learning, creating and growing in the tech industry.',
-  profileImage: '/passport-2.png',
+  profileImage: '/passport-2.webp',
   aboutPreviewTitle: 'Driven by Curiosity. Built Through Code.',
   aboutPreviewText: 'I enjoy turning ideas into useful, user-friendly software and continue to grow by learning and building real projects.',
   contactCtaTitle: "Have an idea? Let's build something useful.",
@@ -58,7 +58,7 @@ export default function HomePageEditor() {
         if (cancelled || !data) return
         const next = Object.fromEntries(Object.keys(DEFAULTS).map((field) => [field, data[field] || DEFAULTS[field]]))
         setHomeData(next)
-        setImagePreview(next.profileImage)
+        setImagePreview(next.profileImage === '/mugisha-prince.png' || next.profileImage === '/passport-2.png' ? DEFAULTS.profileImage : next.profileImage)
       })
       .catch((err) => setStatus(`⚠ ${err.message}`))
     return () => { cancelled = true }

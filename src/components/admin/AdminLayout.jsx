@@ -5,7 +5,6 @@ import { useAuth } from '../../AuthContext.jsx'
 import { api } from '../../api.js'
 import { PREFS_EVENT, readPrefs } from '../../adminPrefs.js'
 import { UNREAD_EVENT } from '../../adminEvents.js'
-import logoImg from '../../../my images/logo.png'
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard' },
@@ -58,7 +57,7 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
       {menuOpen && <button aria-label="Close navigation" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-40 bg-black/60 lg:hidden" />}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 border-r border-blue-500/30 bg-gradient-to-b from-[#08152A] to-[#050B18] transition-transform duration-200 ${menuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="flex h-20 items-center gap-3 border-b border-blue-500/20 px-5">
-          <img src={logoImg} alt="Mugisha Prince logo" className="h-11 w-11 rounded-full object-cover shadow-[0_0_24px_rgba(56,189,248,.3)]" />
+          <img src="/logo.webp" width="512" height="512" decoding="async" alt="Mugisha Prince logo" className="h-11 w-11 rounded-full object-cover shadow-[0_0_24px_rgba(56,189,248,.3)]" />
           <div><p className="font-semibold">Mugisha Prince</p><p className="text-xs text-cyan-400">Admin Dashboard</p></div>
           <button className="ml-auto rounded-lg p-2 text-slate-300 hover:bg-white/10 lg:hidden" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X size={18} /></button>
         </div>

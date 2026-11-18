@@ -21,7 +21,26 @@ export const setToken = (token) => {
   } catch { /* Keep the session for this tab when browser storage is unavailable. */ }
 }
 
-export async function api(path, { method = 'GET', body, auth = false, signal } = {}) {
+// Public page sections request the same content independently. Share an
+// in-flight public GET so one slow hosted database call does not queue up
+// several identical requests during the initial render.
+const inFlightPublicGets = new Map()
+
+export function api(path, options = {}) {
+  const method = options.method || 'GET'
+  const key = method === 'GET' && !options.auth ? path : null
+  if (key && inFlightPublicGets.has(key)) return inFlightPublicGets.get(key)
+  const request = apiRequest(path, options)
+  if (!key) return request
+  let trackedRequest
+  trackedRequest = request.finally(() => {
+    if (inFlightPublicGets.get(key) === trackedRequest) inFlightPublicGets.delete(key)
+  })
+  inFlightPublicGets.set(key, trackedRequest)
+  return trackedRequest
+}
+
+async function apiRequest(path, { method = 'GET', body, auth = false, signal } = {}) {
   const headers = {}
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData
   if (body && !isForm) headers['Content-Type'] = 'application/json'

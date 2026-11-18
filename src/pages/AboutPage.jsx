@@ -26,7 +26,7 @@ const SOCIALS = [
 export default function AboutPage() {
   const [photoOk, setPhotoOk] = useState(true)
   const [about, setAbout] = useState(DEFAULT_ABOUT)
-  const [profileImage, setProfileImage] = useState('/passport-2.png')
+  const [profileImage, setProfileImage] = useState('/passport-2.webp')
 
   useEffect(() => {
     let cancelled = false
@@ -53,8 +53,8 @@ export default function AboutPage() {
               ),
             })
           }
-          const image = data?.portraitImage || home?.profileImage || '/passport-2.png'
-          setProfileImage(image === '/mugisha-prince.png' ? '/passport-2.png' : image)
+          const image = data?.portraitImage || home?.profileImage || '/passport-2.webp'
+          setProfileImage(['/mugisha-prince.png', '/passport-2.png'].includes(image) ? '/passport-2.webp' : image)
           setPhotoOk(true)
         })
         .catch((err) => {

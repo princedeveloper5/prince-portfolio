@@ -150,7 +150,7 @@ export default function AboutManagement() {
 
         <section className="rounded-2xl border border-blue-500/25 bg-[#08152A] p-4 sm:p-5" aria-labelledby="about-portrait-heading">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <img src={portraitPreview || '/passport-2.png'} alt="About portrait preview" onError={(event) => { event.currentTarget.src = '/passport-2.png' }} className="h-24 w-24 rounded-xl border border-blue-500/30 object-cover" />
+            <img src={portraitPreview || '/passport-2.webp'} alt="About portrait preview" onError={(event) => { event.currentTarget.src = '/passport-2.webp' }} className="h-24 w-24 rounded-xl border border-blue-500/30 object-cover" />
             <div className="min-w-0 flex-1">
               <h2 id="about-portrait-heading" className="font-semibold text-white">About portrait</h2>
               <p className="mt-1 text-sm text-slate-400">This photo is independent from the homepage profile photo.</p>
