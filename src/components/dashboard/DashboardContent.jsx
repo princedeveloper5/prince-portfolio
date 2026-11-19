@@ -59,19 +59,21 @@ function Counter({ value, duration = 2 }) {
 
 const COLORS = ['#2563EB', '#38BDF8', '#8B5CF6', '#22C55E', '#F59E0B']
 
-const DEFAULT_ACTIVITIES = [
-  { action: 'Portfolio ready', item: 'Add your first project from the Projects page', time: null, color: '#22C55E' },
-]
-
 export default function DashboardContent() {
   const navigate = useNavigate()
 
   const [stats, setStats] = useState(null)
   const [recentProjects, setRecentProjects] = useState([])
-  const [activities, setActivities] = useState(DEFAULT_ACTIVITIES)
+  const [activities, setActivities] = useState([])
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [projectsLoading, setProjectsLoading] = useState(true)
+  const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [projectError, setProjectError] = useState('')
+  const [activityError, setActivityError] = useState('')
   const [search, setSearch] = useState('')
   const [projectFilter, setProjectFilter] = useState('All')
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -80,19 +82,26 @@ export default function DashboardContent() {
       api('/api/stats', { auth: true })
         .then((data) => { if (!cancelled && data) { setStats(data); setLoadError('') } })
         .catch((err) => { if (!cancelled) setLoadError(err.message) })
-      api('/api/projects', { auth: true })
+        .finally(() => { if (!cancelled) setStatsLoading(false) })
+      api('/api/admin/projects', { auth: true })
         .then((rows) => {
-          if (!cancelled && Array.isArray(rows)) setRecentProjects(rows
+          if (!cancelled && Array.isArray(rows)) {
+            setProjectError('')
+            setRecentProjects(rows
             .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
             .slice(0, 20).map((p) => ({
+            id: p.id,
             title: p.title,
             status: p.status || 'Draft',
             date: formatDate(p.createdAt),
           })))
-        }).catch(() => {})
+          }
+        }).catch((err) => { if (!cancelled) setProjectError(err.message) })
+        .finally(() => { if (!cancelled) setProjectsLoading(false) })
       api('/api/activities', { auth: true })
-        .then((rows) => { if (!cancelled && Array.isArray(rows)) setActivities(rows) })
-        .catch(() => {})
+        .then((rows) => { if (!cancelled && Array.isArray(rows)) { setActivities(rows); setActivityError('') } })
+        .catch((err) => { if (!cancelled) setActivityError(err.message) })
+        .finally(() => { if (!cancelled) setActivitiesLoading(false) })
     }
     refresh()
     window.addEventListener('focus', refresh)
@@ -101,7 +110,14 @@ export default function DashboardContent() {
       cancelled = true
       window.removeEventListener('focus', refresh)
     }
-  }, [])
+  }, [retryKey])
+
+  const retry = () => {
+    setStatsLoading(true)
+    setProjectsLoading(true)
+    setActivitiesLoading(true)
+    setRetryKey((value) => value + 1)
+  }
 
   const cards = [
     { icon: Folder, label: 'Total Projects', value: stats ? stats.totalProjects : 0, color: '#2563EB' },
@@ -135,7 +151,7 @@ export default function DashboardContent() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {loadError && (
           <div className="md:col-span-2 lg:col-span-4 text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
-            {loadError}
+            <div className="flex items-center justify-between gap-3"><span>{loadError}</span><button type="button" onClick={retry} className="shrink-0 underline">Try again</button></div>
           </div>
         )}
         {cards.map((card, index) => (
@@ -156,10 +172,10 @@ export default function DashboardContent() {
                 >
                   <card.icon className="w-6 h-6 text-cyan-400" />
                 </motion.div>
-                <span className="text-xs text-slate-500">Live</span>
+                <span className="text-xs text-slate-500">{statsLoading ? 'Loading' : 'Live'}</span>
               </div>
               <div className="text-3xl font-bold text-white mb-1">
-                <Counter value={card.value} />
+                {statsLoading ? <span className="text-lg text-slate-400" role="status">Loading…</span> : stats ? <Counter value={card.value} /> : <span className="text-slate-400" aria-label="Unavailable">—</span>}
               </div>
               <div className="text-slate-400 text-sm">{card.label}</div>
             </div>
@@ -210,7 +226,11 @@ export default function DashboardContent() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProjects.length === 0 && (
+                {projectsLoading ? (
+                  <tr><td colSpan={3} className="p-6 text-center text-slate-300 text-sm" role="status">Loading recent projects…</td></tr>
+                ) : projectError ? (
+                  <tr><td colSpan={3} className="p-6 text-center text-amber-200 text-sm">{projectError} <button type="button" onClick={retry} className="ml-2 underline">Try again</button></td></tr>
+                ) : filteredProjects.length === 0 && (
                   <tr>
                     <td colSpan={3} className="p-4 text-center text-slate-400 text-sm">
                       {recentProjects.length ? 'No projects match these filters.' : 'No projects yet — add your first one.'}
@@ -219,7 +239,7 @@ export default function DashboardContent() {
                 )}
                 {filteredProjects.map((project, index) => (
                   <motion.tr
-                    key={index}
+                    key={project.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
@@ -249,7 +269,10 @@ export default function DashboardContent() {
         <motion.div variants={itemVariants} className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-2xl p-6">
           <h2 className="text-xl font-semibold text-white mb-4">Activity Timeline</h2>
           <div className="space-y-4">
-            {activities.map((activity, index) => (
+            {activitiesLoading && <p className="py-4 text-center text-sm text-slate-300" role="status">Loading recent activity…</p>}
+            {!activitiesLoading && activityError && <p className="py-4 text-center text-sm text-amber-200" role="alert">{activityError} <button type="button" onClick={retry} className="ml-1 underline">Try again</button></p>}
+            {!activitiesLoading && !activityError && activities.length === 0 && <p className="py-4 text-center text-sm text-slate-400">No recent activity yet.</p>}
+            {!activitiesLoading && !activityError && activities.map((activity, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 10 }}
@@ -291,7 +314,9 @@ export default function DashboardContent() {
               <Line type="monotone" dataKey="visitors" stroke="#38BDF8" strokeWidth={2} dot={{ fill: '#38BDF8', r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
-          {lineData.length === 0 && <p className="mt-2 text-center text-xs text-slate-500">Visitor data will appear as your portfolio receives visits.</p>}
+          {statsLoading && <p className="mt-2 text-center text-xs text-slate-500" role="status">Loading visitor data…</p>}
+          {!statsLoading && stats && lineData.length === 0 && <p className="mt-2 text-center text-xs text-slate-500">Visitor data will appear as your portfolio receives visits.</p>}
+          {!statsLoading && !stats && <p className="mt-2 text-center text-xs text-amber-200">Analytics could not load. Try again above.</p>}
         </motion.div>
 
         <motion.div variants={itemVariants} className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-2xl p-6">
@@ -319,7 +344,7 @@ export default function DashboardContent() {
                   color: '#fff'
                 }}
               />
-            </PieChart> : <div className="flex h-[250px] items-center justify-center text-sm text-slate-500">Publish projects to see category totals.</div>}
+            </PieChart> : <div className="flex h-[250px] items-center justify-center text-sm text-slate-500">{statsLoading ? 'Loading project categories…' : stats ? 'Publish projects to see category totals.' : 'Analytics could not load.'}</div>}
           </ResponsiveContainer>
           <div className="flex justify-center gap-4 mt-4">
             {pieData.map((item, index) => (

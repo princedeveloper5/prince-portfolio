@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FaReact, FaJsSquare, FaHtml5, FaCss3Alt, FaNodeJs, FaGitAlt, FaGithub } from 'react-icons/fa'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
@@ -80,33 +80,35 @@ function LevelBar({ level, color }) {
 
 export default function SkillsPage() {
   const [skills, setSkills] = useState([])
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
+  const hasLoaded = useRef(false)
 
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    const load = () => {
-      setLoadError('')
-      api('/api/skills')
-        .then((rows) => {
-          if (cancelled || !Array.isArray(rows)) return
-          setSkills(rows.map(decorate))
-        })
-        .catch((err) => {
-          if (!cancelled) setLoadError(isOfflineError(err) ? 'Skills are temporarily unavailable. Please try again.' : err.message)
-        })
-    }
-    load()
-    window.addEventListener('focus', load)
-    return () => {
-      cancelled = true
-      window.removeEventListener('focus', load)
+  const loadSkills = useCallback(async (showLoader = false) => {
+    if (showLoader || !hasLoaded.current) setLoading(true)
+    setLoadError('')
+    try {
+      const rows = await api('/api/skills')
+      if (Array.isArray(rows)) setSkills(rows.map(decorate))
+    } catch (err) {
+      setLoadError(isOfflineError(err) ? 'Skills are temporarily unavailable. Please try again.' : err.message)
+    } finally {
+      hasLoaded.current = true
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    const loadOnFocus = () => loadSkills()
+    loadSkills()
+    window.addEventListener('focus', loadOnFocus)
+    return () => window.removeEventListener('focus', loadOnFocus)
+  }, [loadSkills])
 
   // Categories come from the data, so adding one in the admin panel is
   // enough for it to appear here as a filter.
@@ -123,12 +125,7 @@ export default function SkillsPage() {
     [skills, activeCategory],
   )
 
-  const retry = () => {
-    setLoadError('')
-    api('/api/skills')
-      .then((rows) => { if (Array.isArray(rows)) setSkills(rows.map(decorate)) })
-      .catch((err) => setLoadError(err.message))
-  }
+  const retry = () => loadSkills(true)
 
   return (
     <div className="bg-navy-900 min-h-screen">
@@ -166,7 +163,8 @@ export default function SkillsPage() {
 
           <div className="bg-navy-900/60 border border-electric-400/30 rounded-2xl p-6 md:p-8 lg:p-10 shadow-[0_0_80px_rgba(56,189,248,0.08)]">
             {loadError && <div role="alert" className="mb-5 rounded-lg border border-amber-400/30 bg-amber-400/5 p-4 text-center text-amber-200"><p>{loadError}</p><button onClick={retry} className="mt-2 underline">Try again</button></div>}
-            {!loadError && skills.length === 0 && <p className="py-10 text-center text-gray-400">No skills have been added yet.</p>}
+            {loading && <div className="flex items-center justify-center gap-3 py-10 text-sm text-gray-300" role="status" aria-live="polite"><span className="h-5 w-5 animate-spin rounded-full border-2 border-electric-400/30 border-t-electric-400" aria-hidden="true" />Loading skills…</div>}
+            {!loading && !loadError && skills.length === 0 && <p className="py-10 text-center text-gray-400">No skills have been added yet.</p>}
             {!loadError && skills.length > 0 && visible.length === 0 && (
               <p className="py-10 text-center text-gray-400">No skills in this category yet.</p>
             )}

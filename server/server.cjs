@@ -886,6 +886,14 @@ app.put('/api/home', requireAuth, handleUploads, asyncRoute(async (req, res) => 
   const file = findUploadedFile(req);
   if (!hasValidImageSignature(file)) { removeUploadedFile(file.filename); return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' }); }
   const b = req.body || {};
+  const homeFieldLimits = {
+    greeting: 100, name: 120, title: 160, description: 10000,
+    aboutPreviewTitle: 200, aboutPreviewText: 4000, contactCtaTitle: 200,
+    contactCtaText: 4000, metaTitle: 160, metaDescription: 320,
+  };
+  for (const [field, limit] of Object.entries(homeFieldLimits)) {
+    if (b[field] !== undefined && String(b[field]).length > limit) return res.status(400).json({ error: `${field} must be ${limit} characters or fewer.` });
+  }
   const profileImage = file ? file.filename : (b.profileImage !== undefined ? b.profileImage : (existing ? existing.profile_image : ''));
 
   if (existing) {
@@ -957,6 +965,10 @@ app.put('/api/about', requireAuth, handleUploads, asyncRoute(async (req, res) =>
   for (const field of ['cvUrl', 'githubUrl', 'linkedinUrl', 'twitterUrl', 'instagramUrl', 'facebookUrl']) {
     if (b[field] !== undefined && (!isHttpUrl(b[field]) || String(b[field]).length > 2048)) return res.status(400).json({ error: `${field} must be a valid HTTP or HTTPS URL.` });
   }
+  if (b.email !== undefined && String(b.email).trim() && (String(b.email).trim().length > 254 || !EMAIL_RE.test(String(b.email).trim()))) {
+    return res.status(400).json({ error: 'Enter a valid email address under 255 characters.' });
+  }
+  if (String(b.phone ?? '').length > 60 || String(b.location ?? '').length > 160) return res.status(400).json({ error: 'Phone or location is too long.' });
   if (String(b.name ?? '').length > 120 || String(b.title ?? '').length > 160 || String(b.experience ?? '').length > 120 || String(b.description ?? '').length > 12000) return res.status(400).json({ error: 'About content is too long.' });
 
   if (existing) {
@@ -1068,6 +1080,11 @@ app.get('/api/messages', requireAuth, asyncRoute(async (req, res) => {
   res.json(rows.map(messageToJson));
 }));
 
+app.get('/api/messages/unread-count', requireAuth, asyncRoute(async (req, res) => {
+  const row = await get('SELECT COUNT(*) AS n FROM messages WHERE read = 0');
+  res.json({ unreadMessages: row?.n || 0 });
+}));
+
 app.put('/api/messages/:id', requireAuth, asyncRoute(async (req, res) => {
   const existing = await get('SELECT * FROM messages WHERE id = ?', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Message not found' });
@@ -1127,7 +1144,7 @@ app.get('/api/users', requireAuth, requireAdmin, asyncRoute(async (req, res) => 
 app.post('/api/users', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   const { name, email, password, role } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
-  if (!email || !EMAIL_RE.test(String(email).trim())) return res.status(400).json({ error: 'A valid email is required' });
+  if (!email || String(email).trim().length > 254 || !EMAIL_RE.test(String(email).trim())) return res.status(400).json({ error: 'A valid email under 255 characters is required' });
   if (!password || String(password).length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters' });
 
   const cleanEmail = String(email).toLowerCase().trim();
@@ -1170,7 +1187,7 @@ app.put('/api/users/:id', requireAuth, requireAdmin, asyncRoute(async (req, res)
   let email = existing.email;
   if (b.email !== undefined) {
     const clean = String(b.email).toLowerCase().trim();
-    if (!EMAIL_RE.test(clean)) return res.status(400).json({ error: 'A valid email is required' });
+    if (clean.length > 254 || !EMAIL_RE.test(clean)) return res.status(400).json({ error: 'A valid email under 255 characters is required' });
     const clash = await get('SELECT id FROM users WHERE email = ? AND id != ?', [clean, targetId]);
     if (clash) return res.status(409).json({ error: 'A user with this email already exists' });
     email = clean;

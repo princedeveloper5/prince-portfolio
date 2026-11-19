@@ -21,6 +21,7 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [unread, setUnread] = useState(0)
+  const [unreadError, setUnreadError] = useState(false)
   // Honors the Settings > "Unread message badge" preference.
   const [showBadge, setShowBadge] = useState(() => readPrefs().unreadBadge)
   const { user, logout } = useAuth()
@@ -35,9 +36,12 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
 
   useEffect(() => {
     let active = true
-    const refresh = () => api('/api/stats', { auth: true }).then((data) => {
-      if (active) setUnread(Number(data?.unreadMessages) || 0)
-    }).catch(() => {})
+    const refresh = () => api('/api/messages/unread-count', { auth: true }).then((data) => {
+      if (active) {
+        setUnread(Number(data?.unreadMessages) || 0)
+        setUnreadError(false)
+      }
+    }).catch(() => { if (active) setUnreadError(true) })
     refresh()
     window.addEventListener('focus', refresh)
     // Pages that change message state (read/delete) announce it so the
@@ -81,7 +85,7 @@ export default function AdminLayout({ children, currentPage = 'Dashboard' }) {
             <div><h1 className="font-semibold">{currentPage}</h1><p className="hidden text-xs text-slate-400 sm:block">Manage your portfolio content</p></div>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
-            <button onClick={() => navigate('/admin/contact')} title={`${unread} unread messages`} className="relative rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white"><Bell size={19} />{showBadge && unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-400" />}</button>
+            <button onClick={() => navigate('/admin/contact')} title={unreadError ? 'Unread message count unavailable' : `${unread} unread messages`} aria-label={unreadError ? 'Unread message count unavailable. Open messages.' : `Open messages, ${unread} unread`} className="relative rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white"><Bell size={19} />{showBadge && (unreadError || unread > 0) && <span className={`absolute right-1 top-1 h-2 w-2 rounded-full ${unreadError ? 'bg-amber-400' : 'bg-red-400'}`} />}</button>
             <div className="relative">
               <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex max-w-[190px] items-center gap-2 rounded-xl border border-blue-500/30 bg-[#08152A] px-2 py-1.5 hover:border-cyan-400/50 sm:px-3">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-sm font-semibold">{(user?.name || 'MP').split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>

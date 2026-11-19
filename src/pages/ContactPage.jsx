@@ -58,6 +58,7 @@ export default function ContactPage() {
   const validate = () => {
     const next = {}
     if (!form.name.trim()) next.name = 'Please enter your name.'
+    else if (form.name.trim().length > 120) next.name = 'Please keep your name under 121 characters.'
     if (!form.email.trim()) next.email = 'Please enter your email.'
     else if (form.email.trim().length > 254) next.email = 'Please enter an email address under 255 characters.'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
@@ -66,6 +67,7 @@ export default function ContactPage() {
     if (!form.subject.trim()) next.subject = 'Please add a subject.'
     else if (form.subject.trim().length > 150) next.subject = 'Please keep the subject under 150 characters.'
     if (!form.message.trim()) next.message = 'Please write a message.'
+    else if (form.message.trim().length > 10000) next.message = 'Please keep your message under 10,001 characters.'
     return next
   }
 
@@ -170,6 +172,7 @@ export default function ContactPage() {
                   onChange={update('name')}
                   error={errors.name}
                   autoComplete="name"
+                  maxLength={120}
                 />
                 <Field
                   id="contact-email"
@@ -181,6 +184,7 @@ export default function ContactPage() {
                   onChange={update('email')}
                   error={errors.email}
                   autoComplete="email"
+                  maxLength={254}
                 />
                 <Field
                   id="contact-subject"
@@ -201,6 +205,7 @@ export default function ContactPage() {
                     id="contact-message"
                     name="message"
                     rows={4}
+                    maxLength={10000}
                     placeholder="Your message..."
                     value={form.message}
                     onChange={update('message')}

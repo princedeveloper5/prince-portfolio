@@ -24,19 +24,46 @@ export const setToken = (token) => {
 // Public page sections request the same content independently. Share an
 // in-flight public GET so one slow hosted database call does not queue up
 // several identical requests during the initial render.
-const inFlightPublicGets = new Map()
+const publicGetCache = new Map()
+const inFlightAuthGets = new Map()
+const PUBLIC_GET_CACHE_MS = 5000
 
 export function api(path, options = {}) {
   const method = options.method || 'GET'
   const key = method === 'GET' && !options.auth ? path : null
-  if (key && inFlightPublicGets.has(key)) return inFlightPublicGets.get(key)
-  const request = apiRequest(path, options)
-  if (!key) return request
+  const authKey = method === 'GET' && options.auth ? `${getToken()}::${path}` : null
+  if (authKey && inFlightAuthGets.has(authKey)) return inFlightAuthGets.get(authKey)
+  if (key) {
+    const cached = publicGetCache.get(key)
+    if (cached && (cached.promise || cached.expiresAt > Date.now())) {
+      return cached.promise || Promise.resolve(cached.data)
+    }
+    if (cached) publicGetCache.delete(key)
+  }
+  if (!key) {
+    const request = apiRequest(path, options).then((data) => {
+      if (method !== 'GET') publicGetCache.clear()
+      return data
+    })
+    if (!authKey) return request
+    let trackedRequest
+    trackedRequest = request.finally(() => {
+      if (inFlightAuthGets.get(authKey) === trackedRequest) inFlightAuthGets.delete(authKey)
+    })
+    inFlightAuthGets.set(authKey, trackedRequest)
+    return trackedRequest
+  }
   let trackedRequest
-  trackedRequest = request.finally(() => {
-    if (inFlightPublicGets.get(key) === trackedRequest) inFlightPublicGets.delete(key)
+  trackedRequest = apiRequest(path, options).then((data) => {
+    if (publicGetCache.get(key)?.promise === trackedRequest) {
+      publicGetCache.set(key, { data, expiresAt: Date.now() + PUBLIC_GET_CACHE_MS })
+    }
+    return data
+  }).catch((err) => {
+    if (publicGetCache.get(key)?.promise === trackedRequest) publicGetCache.delete(key)
+    throw err
   })
-  inFlightPublicGets.set(key, trackedRequest)
+  publicGetCache.set(key, { promise: trackedRequest, expiresAt: Infinity })
   return trackedRequest
 }
 

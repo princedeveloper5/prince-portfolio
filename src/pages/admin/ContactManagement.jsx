@@ -78,8 +78,9 @@ export default function ContactManagement() {
         </div>
 
         {error && (
-          <div className="text-amber-300 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
-            {error}
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={load} disabled={loading} className="shrink-0 rounded-md border border-amber-300/30 px-2.5 py-1 text-xs font-semibold hover:bg-amber-300/10 disabled:opacity-50">{loading ? 'Loading…' : 'Try again'}</button>
           </div>
         )}
         {actionError && (
@@ -94,6 +95,8 @@ export default function ContactManagement() {
         <div className="bg-gradient-to-br from-[#08152A] to-[#050B18] border border-blue-500/30 rounded-2xl overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-cyan-400 text-sm">Loading messages...</div>
+          ) : error && messages.length === 0 ? (
+            <div className="p-10 text-center text-slate-400">Messages could not be loaded. Use “Try again” above.</div>
           ) : messages.length === 0 ? (
             <div className="p-10 text-center">
               <Inbox className="w-10 h-10 text-slate-500 mx-auto mb-3" />

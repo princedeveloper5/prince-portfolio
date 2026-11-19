@@ -20,7 +20,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'Segoe UI', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Segoe UI', 'system-ui', '-apple-system', 'sans-serif'],
       },
     },
   },
