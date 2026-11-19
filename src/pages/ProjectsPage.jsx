@@ -61,7 +61,7 @@ function ProjectVisual({ project }) {
         src={project.image}
         alt={`${project.title} preview`}
         loading="lazy"
-        className="w-full h-auto block"
+        className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.025]"
         onError={() => setImageFailed(true)}
       />
     )
@@ -548,15 +548,17 @@ export default function ProjectsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {projects.map((project, index) => (
                     <Reveal key={project.id} delay={(index % 2) * 100} y={34}>
-                      <article className="hover-lift group h-full overflow-hidden bg-navy-800 rounded-xl border border-navy-600 transition-all duration-300 hover:border-electric-400/50 hover:shadow-xl hover:shadow-electric-400/10">
-                        <div className="p-3">
-                          <div className="rounded-lg border border-navy-600 overflow-hidden bg-white">
+                      <article className="project-showcase-card hover-lift group flex h-full flex-col overflow-hidden rounded-2xl border border-navy-600/80 bg-gradient-to-b from-navy-800 to-navy-900 transition-all duration-300 hover:border-electric-400/50 hover:shadow-xl hover:shadow-electric-400/10">
+                        <div className="p-3 pb-0">
+                          <div className="project-showcase-card__visual relative aspect-[16/10] overflow-hidden rounded-xl border border-navy-600 bg-navy-900">
                             <ProjectVisual project={project} />
+                            <span className="absolute bottom-3 left-3 rounded-full border border-white/15 bg-navy-900/80 px-3 py-1 text-[11px] font-medium text-white backdrop-blur">{project.category}</span>
                           </div>
                         </div>
 
-                        <div className="px-6 pb-6">
-                          <h2 className="text-xl font-semibold text-white mb-2 group-hover:text-electric-400 transition-colors duration-200">
+                        <div className="flex flex-1 flex-col px-6 pb-6 pt-5">
+                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-electric-400">Selected work <span className="ml-1 text-slate-500">/ {String(index + 1).padStart(2, '0')}</span></p>
+                          <h2 className="text-xl font-semibold tracking-tight text-white mb-2 group-hover:text-electric-400 transition-colors duration-200">
                             {project.title}
                           </h2>
                           <p className="text-gray-400 text-sm mb-4 leading-relaxed">{project.description}</p>
@@ -572,7 +574,7 @@ export default function ProjectsPage() {
                             ))}
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-3">
+                          <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-navy-600/70 pt-5">
                             <button
                               type="button"
                               onClick={() => navigate(`/projects/${project.id}`)}
